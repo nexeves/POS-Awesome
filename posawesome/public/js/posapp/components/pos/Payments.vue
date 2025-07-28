@@ -899,6 +899,7 @@ export default {
             });
             frappe.utils.play_sound("submit");
             this.addresses = [];
+            window.location.reload();
           }
         },
       });

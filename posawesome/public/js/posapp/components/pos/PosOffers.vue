@@ -96,6 +96,7 @@ export default {
   mixins: [format],
   data: () => ({
     loading: false,
+    custom_offer_auto_ignore: 0,
     pos_profile: '',
     pos_offers: [],
     allItems: [],
@@ -127,6 +128,8 @@ export default {
     forceUpdateItem() {
       let list_offers = [];
       list_offers = [...this.pos_offers];
+      console.log("from forceUpdateItem");
+      
       this.pos_offers = list_offers;
     },
     makeid(length) {
@@ -148,6 +151,8 @@ export default {
           toRemove.push(pos_offer.row_id);
         }
       });
+      console.log("from updatePosOffers");
+      
       this.removeOffers(toRemove);
       offers.forEach((offer) => {
         const pos_offer = this.pos_offers.find(
@@ -159,7 +164,9 @@ export default {
             pos_offer.offer === 'Grand Total' &&
             !this.discount_percentage_offer_name
           ) {
-            pos_offer.offer_applied = !!pos_offer.auto;
+            pos_offer.offer_applied =
+              this.custom_offer_auto_ignore == 0 && pos_offer.auto == 1;
+
           }
           if (
             offer.apply_on == 'Item Group' &&
@@ -193,7 +200,7 @@ export default {
             ) {
               newOffer.offer_applied = false;
             } else {
-              newOffer.offer_applied = !!offer.auto;
+              newOffer.offer_applied = this.custom_offer_auto_ignore == 0 && offer.auto == 1;
             }
           }
           if (newOffer.offer == 'Give Product' && !newOffer.give_item) {
@@ -208,11 +215,15 @@ export default {
       });
     },
     removeOffers(offers_id_list) {
+      console.log("from removeOffers ");
+      
       this.pos_offers = this.pos_offers.filter(
         (offer) => !offers_id_list.includes(offer.row_id)
       );
     },
     handelOffers() {
+      console.log('handleoffers');
+      
       const applyedOffers = this.pos_offers.filter(
         (offer) => offer.offer_applied
       );
@@ -264,6 +275,7 @@ export default {
     pos_offers: {
       deep: true,
       handler(pos_offers) {
+        console.log("from watch");
         this.handelOffers();
         this.updateCounters();
         this.updatePosCoupuns();
@@ -281,6 +293,19 @@ export default {
       if (this.customer != customer) {
         this.offers = [];
       }
+      this.customer = customer;
+      frappe.call({
+        method: 'posawesome.posawesome.api.posapp.get_customer_info', // update this path
+        args: { customer },
+        callback: (r) => {
+          if (r.message) {
+            this.custom_offer_auto_ignore = r.message.custom_offer_auto_ignore || 0;
+            console.log(
+              `Customer: ${r.message.customer_name}, Auto Apply Flag: ${this.custom_offer_auto_ignore}`
+            );
+          }
+        },
+      });
     });
     evntBus.$on('update_pos_offers', (data) => {
       this.updatePosOffers(data);
