@@ -281,34 +281,15 @@
                       dense
                       outlined
                       color="primary"
-                      :label="frappe._('Rate')"
+                      :label="frappe._('Price list Rate')"
                       background-color="white"
                       hide-details
-                      :prefix="currencySymbol(pos_profile.currency)"
-                      :value="formtCurrency(item.rate)"
-                      @change="
-                        [
-                          setFormatedCurrency(
-                            item,
-                            'rate',
-                            null,
-                            false,
-                            $event
-                          ),
-                          calc_prices(item, $event),
-                        ]
-                      "
+                      type="number"
+                      :value="item.price_list_rate"
+                      @input="onPriceListRateChange($event, item)"
                       :rules="[isNumber]"
-                      id="rate"
-                      :disabled="
-                        !!item.posa_is_offer ||
-                        !!item.posa_is_replace ||
-                        !!item.posa_offer_applied ||
-                        !pos_profile.posa_allow_user_to_edit_rate ||
-                        !!invoice_doc.is_return
-                          ? true
-                          : false
-                      "
+                      :prefix="currencySymbol(pos_profile.currency)"
+                      :disabled="!pos_profile.custom_allow_user_to_edit_price_list_rate_"
                     ></v-text-field>
                   </v-col>
                   <v-col cols="4">
@@ -387,12 +368,34 @@
                       dense
                       outlined
                       color="primary"
-                      :label="frappe._('Price list Rate')"
+                      :label="frappe._('Rate')"
                       background-color="white"
                       hide-details
-                      :value="formtCurrency(item.price_list_rate)"
-                      disabled
                       :prefix="currencySymbol(pos_profile.currency)"
+                      :value="formtCurrency(item.rate)"
+                      @change="
+                        [
+                          setFormatedCurrency(
+                            item,
+                            'rate',
+                            null,
+                            false,
+                            $event
+                          ),
+                          calc_prices(item, $event),
+                        ]
+                      "
+                      :rules="[isNumber]"
+                      id="rate"
+                      :disabled="
+                        !!item.posa_is_offer ||
+                        !!item.posa_is_replace ||
+                        !!item.posa_offer_applied ||
+                        !pos_profile.posa_allow_user_to_edit_rate ||
+                        !!invoice_doc.is_return
+                          ? true
+                          : false
+                      "
                     ></v-text-field>
                   </v-col>
                   <v-col cols="4">
@@ -938,6 +941,15 @@ export default {
         this.expanded.splice(idx, 1);
       }
     },
+    onPriceListRateChange(value, item) {
+      const newRate = parseFloat(value) || 0;
+
+      // Vue 2 reactivity
+      this.$set(item, 'price_list_rate', newRate);
+      this.$set(item, 'rate', newRate);
+
+      this.calc_prices(item, newRate);
+    },
 
     add_one(item) {
       item.qty++;
@@ -984,7 +996,7 @@ export default {
           item.batch_no = null;
           this.set_batch_qty(new_item, new_item.batch_no, false);
         }
-        this.items.unshift(new_item);
+        this.items.push(new_item);
         this.update_item_detail(new_item);
       } else {
         const cur_item = this.items[index];
@@ -1025,7 +1037,7 @@ export default {
               item.to_set_batch_no = null;
               item.batch_no = null;
             }
-            this.items.unshift(new_item);
+            this.items.push(new_item);
           }
         }
         this.set_serial_no(cur_item);
@@ -2187,8 +2199,40 @@ export default {
       const item = this.items.find((el) => el.posa_row_id == row_id);
       return item;
     },
+    groupedItems() {
+            return this.items.reduce((groups, item) => {
+                const key = `${item.item_code}-${item.batch_no}`;
+                if (!groups[key]) {
+                    groups[key] = [];
+                }
+                groups[key].push(item);
+                return groups;
+            }, {});
+        },
+     getTotalQtyOfItem(items, itemName,value) {
+        // Initialize total quantity to 0
+        let totalQty = 0;
+        
+        // Iterate over each item in the array
+        items.forEach(item => {
+            // Check if the item's name matches the specified item name
+            if (item.item_code === itemName) {
+              
+                // Add the item's quantity to the total quantity
+                totalQty += parseInt(item[value], 10);
+            }
+        });
+
+        return totalQty;
+    },
 
     checkQtyAnountOffer(offer, qty, amount) {
+      // if (offer.apply_item_code!= null){
+      //   qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
+      // }
+      if (offer.apply_on === "Item Code"){
+        qty=this.getTotalQtyOfItem(this.items, offer.item,'qty');
+      }
       let min_qty = false;
       let max_qty = false;
       let min_amt = false;
@@ -2636,9 +2680,16 @@ export default {
       if (!item) {
         return;
       }
+      if (offer.apply_item_code!= null){
+        qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
+      }
       const new_item = { ...item };
-      new_item.qty = offer.given_qty;
-      new_item.stock_qty = offer.given_qty;
+      let match_item = this.items.find(
+            (el) => el.item_code == offer.give_item
+          );
+      let last_added_item = qty;
+      new_item.qty = Math.floor(last_added_item / offer.min_qty) * offer.given_qty;
+      new_item.stock_qty = Math.floor(last_added_item / offer.min_qty) * offer.given_qty;
       new_item.rate = offer.discount_type === "Rate" ? offer.rate : item.rate;
       new_item.discount_amount =
         offer.discount_type === "Discount Amount" ? offer.discount_amount : 0;
@@ -2681,15 +2732,15 @@ export default {
 
     ApplyOnPrice(offer) {
       this.items.forEach((item) => {
-        if (offer.items.includes(item.posa_row_id)) {
+        if (item.item_code === offer.item || offer.items.includes(item.posa_row_id) ) {
           const item_offers = JSON.parse(item.posa_offers);
           if (!item_offers.includes(offer.row_id)) {
             if (offer.discount_type === "Rate") {
               item.rate = offer.rate;
             } else if (offer.discount_type === "Discount Percentage") {
-              item.discount_percentage += offer.discount_percentage;
+              item.discount_percentage = offer.discount_percentage;
             } else if (offer.discount_type === "Discount Amount") {
-              item.discount_amount += offer.discount_amount;
+              item.discount_amount = offer.discount_amount;
             }
             item.posa_offer_applied = 1;
             this.calc_item_price(item);

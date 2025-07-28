@@ -1,7 +1,7 @@
 <template>
   <div fluid>
     <v-row v-show="!dialog">
-      <v-col md="8" cols="12" class="pb-2 pr-0">
+      <v-col md="6" cols="12" class="pb-2 pr-0">
         <v-card
           class="main mx-auto grey lighten-5 mt-3 p-3 pb-16 overflow-y-auto"
           style="max-height: 94vh; height: 94vh"
@@ -11,15 +11,9 @@
           <div>
             <v-row>
               <v-col md="7" cols="12">
-                <p>
-                  <strong>{{ __("Invoices") }}</strong>
-                  <span v-if="total_outstanding_amount" class="primary--text"
-                    >{{ __("- Total Outstanding") }} :
-                    {{ currencySymbol(pos_profile.currency) }}
-                    {{ formtCurrency(total_outstanding_amount) }}</span
-                  >
-                </p>
+                <p><strong>{{ __("Invoices") }}</strong></p>
               </v-col>
+
               <v-col md="5" cols="12">
                 <p v-if="total_selected_invoices" class="golden--text text-end">
                   <span>{{ __("Total Selected :") }}</span>
@@ -45,7 +39,7 @@
                 ></v-select>
               </v-col>
               <v-col> </v-col>
-              <v-col md="3" cols="12">
+              <!-- <v-col md="3" cols="12">
                 <v-btn
                   block
                   color="warning"
@@ -53,19 +47,17 @@
                   @click="get_outstanding_invoices"
                   >{{ __("Search") }}</v-btn
                 >
-              </v-col>
+              </v-col> -->
             </v-row>
             <v-data-table
-              :headers="invoices_headers"
-              :items="outstanding_invoices"
-              item-key="name"
-              class="elevation-1 mt-0"
-              show-select
-              v-model="selected_invoices"
-              :loading="invoices_loading"
-              checkbox-color="primary"
-              @item-selected="onInvoiceSelected"
-            >
+                :headers="invoices_headers"
+                :items="outstanding_invoices"
+                item-key="name"
+                class="elevation-1 mt-0"
+                :loading="invoices_loading"
+                @click:row="onInvoiceRowClick"
+              >
+
               <template v-slot:item.grand_total="{ item }">
                 {{ currencySymbol(item.currency) }}
                 {{ formtCurrency(item.grand_total) }}
@@ -206,8 +198,8 @@
           </div>
         </v-card>
       </v-col>
-      <v-col md="4" cols="12" class="pb-3">
-        <v-card
+      <v-col md="6" cols="12" class="pb-3">
+        <!-- <v-card
           class="invoices mx-auto grey lighten-5 mt-3 p-3"
           style="max-height: 94vh; height: 94vh"
         >
@@ -332,6 +324,109 @@
               {{ __("Submit") }}
             </v-btn>
           </div>
+        </v-card> -->
+       <v-card
+          class="invoices mx-auto white mt-3 pa-4"
+          style="max-height: 94vh; height: 94vh; overflow-y: auto"
+        >
+          <template v-if="selected_invoice">
+            <!-- Header Info -->
+            <v-row class="mb-4">
+              <v-col cols="6">
+                <p class="mb-1"><strong>{{ __("Invoice ID") }}:</strong></p>
+                <p class="mb-2">{{ selected_invoice.name }}</p>
+
+                <p class="mb-1"><strong>{{ __("Customer Name") }}:</strong></p>
+                <p class="mb-2">{{ selected_invoice.customer_name }}</p>
+
+                <p class="mb-1"><strong>{{ __("Mobile No") }}:</strong></p>
+                <p class="mb-2">{{ selected_invoice.mobile_no || __("N/A") }}</p>
+              </v-col>
+
+              <v-col cols="6" class="text-right">
+                <p class="mb-1"><strong>{{ __("Posting Date") }}:</strong></p>
+                <p class="mb-2">{{ selected_invoice.posting_date }}</p>
+
+                <p class="mb-1"><strong>{{ __("Sales Person") }}:</strong></p>
+                <p class="mb-2">{{ selected_invoice.sales_person || __("N/A") }}</p>
+              </v-col>
+            </v-row>
+
+            <v-divider class="mb-4"></v-divider>
+
+            <!-- Items Table -->
+            <v-data-table
+              dense
+              class="elevation-1"
+              :headers="[
+                { text: __('Item Code'), value: 'item_code' },
+                { text: __('Item Name'), value: 'item_name' },
+                { text: __('Qty'), value: 'qty', align: 'end' },
+                { text: __('Rate'), value: 'rate', align: 'end' },
+                { text: __('Amount'), value: 'amount', align: 'end' }
+              ]"
+              :items="selected_invoice.items || []"
+              item-key="item_code"
+              hide-default-footer
+            >
+              <template v-slot:item.rate="{ item }">
+                {{ currencySymbol(selected_invoice.currency) }} {{ formtCurrency(item.rate) }}
+              </template>
+              <template v-slot:item.amount="{ item }">
+                {{ currencySymbol(selected_invoice.currency) }} {{ formtCurrency(item.amount) }}
+              </template>
+            </v-data-table>
+
+            <!-- Grand Total -->
+            <v-divider class="my-2"></v-divider>
+            <v-row>
+              <v-col cols="12" class="text-right">
+                <div style="font-size: 1 rem; line-height: 1.25;">
+                  <div style="color: black;">
+                    {{ __("Amount before Discount") }}:
+                    {{ currencySymbol(selected_invoice.currency) }}
+                    {{ formtCurrency(selected_invoice.amount_before_discount) }}
+                  </div>
+                  <div style="color: black;">
+                    {{ __("Total Discount Amount") }}:
+                    {{ currencySymbol(selected_invoice.currency) }}
+                    {{ formtCurrency(selected_invoice.total_discount) }}
+                  </div>
+                  <div style="color: black;">
+                    {{ __("Amount Excl. VAT") }}:
+                    {{ currencySymbol(selected_invoice.currency) }}
+                    {{ formtCurrency(selected_invoice.amount_excl_vat) }}
+                  </div>
+                  <div style="color: black;">
+                    {{ __("VAT Amount") }}:
+                    {{ currencySymbol(selected_invoice.currency) }}
+                    {{ formtCurrency(selected_invoice.vat_amount) }}
+                  </div>
+                  <div style="font-weight: bold; color: #1976d2;">
+                    {{ __("Grand Total") }}:
+                    {{ currencySymbol(selected_invoice.currency) }}
+                    {{ formtCurrency(selected_invoice.grand_total) }}
+                  </div>
+                </div>
+              </v-col>
+            </v-row>
+          </template>
+          <!-- When no invoice is selected -->
+          <template v-else>
+            <v-row align="center" justify="center" style="height: 100%">
+              <v-col cols="12" class="text-center">
+                <p class="grey--text">{{ __("Click an invoice to view details") }}</p>
+              </v-col>
+            </v-row>
+          </template>
+          <v-row justify="end" class="mt-4">
+            <v-col cols="auto">
+              <v-btn color="primary" @click="print_invoice" v-if="selected_invoice">
+                <v-icon left>mdi-printer</v-icon>
+                {{ __("Print") }}
+              </v-btn>
+            </v-col>
+          </v-row>
         </v-card>
       </v-col>
     </v-row>
@@ -342,13 +437,16 @@
 import { evntBus } from "../../bus";
 import format from "../../format";
 import Customer from "../pos/Customer.vue";
-import UpdateCustomer from "../pos/UpdateCustomer.vue";
+// import UpdateCustomer from "../pos/UpdateCustomer.vue";
 
 export default {
   mixins: [format],
   data: function () {
     return {
       dialog: false,
+      print_dialog: false,
+      selected_invoice: null,
+      selected_invoice_details: null,
       pos_profile: "",
       pos_opening_shift: "",
       customer_name: "",
@@ -390,22 +488,16 @@ export default {
           value: "posting_date",
         },
         {
-          text: __("Due Date"),
+          text: __("Sales Person"),
           align: "start",
           sortable: true,
-          value: "due_date",
+          value: "sales_person",
         },
         {
           text: __("Total"),
           align: "end",
           sortable: true,
           value: "grand_total",
-        },
-        {
-          text: __("Outstanding"),
-          align: "end",
-          sortable: true,
-          value: "outstanding_amount",
         },
       ],
       unallocated_payments_headers: [
@@ -483,10 +575,36 @@ export default {
 
   components: {
     Customer,
-    UpdateCustomer,
+    // UpdateCustomer,
   },
 
   methods: {
+     print_invoice() {
+      if (!this.selected_invoice || !this.pos_profile.print_format) {
+        frappe.msgprint(__("Missing invoice or print format."));
+        return;
+      }
+
+      const invoice_name = this.selected_invoice.name;
+      const print_format = this.pos_profile.print_format;
+
+      const print_url = `/printview?doctype=Sales Invoice&name=${invoice_name}&format=${print_format}&no_letterhead=0&_lang=en`;
+
+      // Create a hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.visibility = 'hidden';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.src = print_url;
+
+      document.body.appendChild(iframe);
+
+      iframe.onload = function () {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      };
+    },
     check_opening_entry() {
       return frappe
         .call("posawesome.posawesome.api.posapp.check_opening_shift", {
@@ -495,6 +613,7 @@ export default {
         .then((r) => {
           if (r.message) {
             this.pos_profile = r.message.pos_profile;
+            this.print_format = this.pos_profile.print_format;
             this.pos_opening_shift = r.message.pos_opening_shift;
             this.company = r.message.company.name;
             evntBus.$emit("payments_register_pos_profile", r.message);
@@ -514,6 +633,21 @@ export default {
           }
         });
     },
+  onInvoiceRowClick(item) {
+  this.selected_invoice = null; // clear previous
+
+  frappe.call({
+    method: "posawesome.posawesome.api.payment_entry.get_invoice_details",
+    args: {
+      invoice_id: item.name,
+    },
+    callback: (r) => {
+      if (r.message) {
+        this.selected_invoice = r.message;
+      }
+    },
+  });
+},
     get_available_pos_profiles() {
       if (!this.pos_profile.posa_allow_mpesa_reconcile_payments) return;
       return frappe
@@ -562,7 +696,7 @@ export default {
       this.invoices_loading = true;
       return frappe
         .call(
-          "posawesome.posawesome.api.payment_entry.get_outstanding_invoices",
+          "posawesome.posawesome.api.payment_entry.get_invoices",
           {
             customer: this.customer_name,
             company: this.company,
@@ -634,7 +768,7 @@ export default {
         });
     },
     set_payment_methods() {
-      // get payment methods from pos profile
+
       if (!this.pos_profile.posa_allow_make_new_payments) return;
       this.payment_methods = [];
       this.pos_profile.payments.forEach((method) => {

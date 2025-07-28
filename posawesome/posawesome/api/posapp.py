@@ -208,6 +208,7 @@ def get_items(
                 disabled = 0
                     AND is_sales_item = 1
                     AND is_fixed_asset = 0
+                    AND custom_pos_item = 1
                     {condition}
             ORDER BY
                 item_name asc
@@ -420,12 +421,13 @@ def get_customer_names(pos_profile):
     def _get_customer_names(pos_profile):
         pos_profile = json.loads(pos_profile)
         condition = ""
+        # condition = "custom_customer_category = 'POS'"
         condition += get_customer_group_condition(pos_profile)
         customers = frappe.db.sql(
             """
             SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
             FROM `tabCustomer`
-            WHERE {0}
+            WHERE disabled = 0
             ORDER by name
             """.format(
                 condition
@@ -1049,7 +1051,10 @@ def create_customer(
     territory=None,
     customer_type=None,
     gender=None,
+    custom_invoice_name=None,
+    custom_vat_no=None,
     method="create",
+    payment_term=None
 ):
     pos_profile = json.loads(pos_profile_doc)
     if method == "create":
@@ -1067,6 +1072,10 @@ def create_customer(
                     "posa_birthday": birthday,
                     "customer_type": customer_type,
                     "gender": gender,
+                    # "custom_customer_category": "POS",
+                    "default_price_list": "Standard Selling",
+                    "custom_invoice_name": custom_invoice_name,
+                    "custom_vat_no":custom_vat_no,
                 }
             )
             if customer_group:
@@ -1077,6 +1086,14 @@ def create_customer(
                 customer.territory = territory
             else:
                 customer.territory = "All Territories"
+            if payment_term:
+                customer.payment_terms = payment_term
+
+                
+            customer.append("accounts", {
+                    "company": company,
+                    "account": "Debtors - MM"
+                })
             customer.save()
             return customer
         else:
@@ -1093,6 +1110,10 @@ def create_customer(
         customer_doc.territory = territory
         customer_doc.customer_group = customer_group
         customer_doc.gender = gender
+        customer_doc.custom_invoice_name = custom_invoice_name  
+        customer_doc.custom_vat_no = custom_vat_no
+        if payment_term:
+            customer_doc.payment_terms = payment_term
         customer_doc.save()
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
@@ -1699,6 +1720,7 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+    # res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
@@ -1742,6 +1764,7 @@ def auto_create_items():
                 "is_sales_item": 1,
                 "is_purchase_item": 0,
                 "is_fixed_asset": 0,
+                "custom_pos_item" : 1,
                 "is_sub_contracted_item": 0,
                 "is_pro_applicable": 0,
                 "is_manufactured_item": 0,

@@ -10,7 +10,7 @@
 <script>
 import Navbar from './components/Navbar.vue';
 import POS from './components/pos/Pos.vue';
-import Payments from './components/payments/Pay.vue';
+import Orders from './components/payments/Pay.vue';
 
 export default {
   data: function () {
@@ -21,7 +21,7 @@ export default {
   components: {
     Navbar,
     POS,
-    Payments,
+    Orders,
   },
   methods: {
     setPage(page) {

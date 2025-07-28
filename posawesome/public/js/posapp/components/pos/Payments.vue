@@ -604,6 +604,7 @@
               hide-details
               :filter="salesPersonFilter"
               :disabled="readonly"
+              :rules="sales_person_rules"
             >
               <template v-slot:item="data">
                 <template>
@@ -728,6 +729,7 @@ export default {
     pos_settings: "",
     customer_info: "",
     mpesa_modes: [],
+    paid_amount: 0,
   }),
 
   methods: {
@@ -736,6 +738,14 @@ export default {
       evntBus.$emit("set_customer_readonly", false);
     },
     submit(event, payment_received = false, print = false) {
+      if (!this.is_return && !this.sales_person) {
+        evntBus.$emit("show_mesage", {
+          text: __("Please select a Sales Person before submitting."),
+          color: "error",
+        });
+        frappe.utils.play_sound("error");
+        return;
+      }
       if (!this.invoice_doc.is_return && this.total_payments < 0) {
         evntBus.$emit("show_mesage", {
           text: `Payments not correct`,
@@ -899,6 +909,7 @@ export default {
             });
             frappe.utils.play_sound("submit");
             this.addresses = [];
+            window.location.reload();
           }
         },
       });
@@ -1354,12 +1365,43 @@ export default {
           );
         }
         if (invoice_doc.is_return) {
-          this.is_return = true;
-          invoice_doc.payments.forEach((payment) => {
-            payment.amount = 0;
-            payment.base_amount = 0;
+        this.is_return = true;
+
+        invoice_doc.payments.forEach((payment) => {
+          payment.amount = 0;
+          payment.base_amount = 0;
+        });
+
+        frappe.db
+          .get_doc("Sales Invoice", invoice_doc.return_against)
+          .then((original_invoice) => {
+            if (original_invoice.outstanding_amount === 0) {
+              this.paid_amount = original_invoice.grand_total;
+
+              const return_default_payment = this.invoice_doc.payments.find(
+                (p) => p.default == 1
+              );
+              if (return_default_payment) {
+                const negative_amount = this.flt(
+                  -original_invoice.grand_total,
+                  this.currency_precision
+                );
+
+                return_default_payment.amount = negative_amount;
+                return_default_payment.base_amount = negative_amount;
+              }
+            } else {
+              this.paid_amount = 0;
+              this.invoice_doc.update_outstanding_for_self = 0;
+            }
           });
+      } else {
+        this.paid_amount = this.total_payments;
+
+        if (this.paid_amount === 0) {
+          this.invoice_doc.update_outstanding_for_self = 0;
         }
+      }
         this.loyalty_amount = 0;
         this.get_addresses();
         this.get_sales_person_names();
