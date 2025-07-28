@@ -241,7 +241,7 @@ export default {
       });
       evntBus.$on('register_pos_profile', (data) => {
         this.pos_profile = data.pos_profile;
-        const payments = { text: 'Payments', icon: 'mdi-cash-register' };
+        const payments = { text: 'Orders', icon: 'mdi-cash-register' };
         if (
           this.pos_profile.posa_use_pos_awesome_payments &&
           this.items.length !== 2

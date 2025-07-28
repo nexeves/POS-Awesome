@@ -159,6 +159,20 @@
                 >
                 </v-autocomplete>
               </v-col>
+              <v-col cols="6">
+                <v-autocomplete
+                  clearable
+                  dense
+                  auto-select-first
+                  color="primary"
+                  :label="frappe._('Payment Term Template')"
+                  v-model="payment_term"
+                  :items="payment_terms"
+                  background-color="white"
+                  :no-data-text="__('Payment Term Template not found')"
+                  hide-details
+                ></v-autocomplete>
+              </v-col>
               <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
                   v-model="loyalty_program"
@@ -219,6 +233,8 @@ export default {
     gender: '',
     loyalty_points: null,
     loyalty_program: null,
+    payment_term: '', 
+    payment_terms: [],
   }),
   watch: {},
   methods: {
@@ -242,6 +258,7 @@ export default {
       this.gender = '';
       this.loyalty_points = null;
       this.loyalty_program = null;
+      this.payment_term = '';
     },
     getCustomerGroups() {
       if (this.groups.length > 0) return;
@@ -294,6 +311,16 @@ export default {
           }
         });
     },
+    getPaymentTerms() {
+      if (this.payment_terms.length > 0) return;
+      frappe.db.get_list('Payment Terms Template', {
+        fields: ['name'],
+        limit: 1000,
+        order_by: 'name',
+      }).then((data) => {
+        this.payment_terms = data.map((d) => d.name);
+      });
+    },
     submit_dialog() {
       // validate if all required fields are filled
       if (!this.customer_name) {
@@ -334,6 +361,7 @@ export default {
           territory: this.territory,
           customer_type: this.customer_type,
           gender: this.gender,
+          payment_term: this.payment_term,
           method: this.customer_id ? 'update' : 'create',
           pos_profile_doc: this.pos_profile,
         };
@@ -387,6 +415,7 @@ export default {
         this.loyalty_points = data.loyalty_points;
         this.loyalty_program = data.loyalty_program;
         this.gender = data.gender;
+        this.payment_term = data.payment_term || '';
       }
     });
     evntBus.$on('register_pos_profile', (data) => {
@@ -398,6 +427,7 @@ export default {
     this.getCustomerGroups();
     this.getCustomerTerritorys();
     this.getGenders();
+    this.getPaymentTerms();
     // set default values for customer group and territory from user defaults
     this.group = frappe.defaults.get_user_default('Customer Group');
     this.territory = frappe.defaults.get_user_default('Territory');

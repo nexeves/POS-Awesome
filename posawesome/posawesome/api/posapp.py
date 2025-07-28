@@ -421,13 +421,13 @@ def get_customer_names(pos_profile):
     def _get_customer_names(pos_profile):
         pos_profile = json.loads(pos_profile)
         condition = ""
-        condition = "custom_customer_category = 'POS'"
+        # condition = "custom_customer_category = 'POS'"
         condition += get_customer_group_condition(pos_profile)
         customers = frappe.db.sql(
             """
             SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
             FROM `tabCustomer`
-            WHERE custom_customer_category = 'POS' AND disabled = 0
+            WHERE disabled = 0
             ORDER by name
             """.format(
                 condition
@@ -1058,6 +1058,7 @@ def create_customer(
     custom_invoice_name=None,
     custom_vat_no=None,
     method="create",
+    payment_term=None
 ):
     pos_profile = json.loads(pos_profile_doc)
     if method == "create":
@@ -1075,7 +1076,7 @@ def create_customer(
                     "posa_birthday": birthday,
                     "customer_type": customer_type,
                     "gender": gender,
-                    "custom_customer_category": "POS",
+                    # "custom_customer_category": "POS",
                     "default_price_list": "Standard Selling",
                     "custom_invoice_name": custom_invoice_name,
                     "custom_vat_no":custom_vat_no,
@@ -1089,11 +1090,13 @@ def create_customer(
                 customer.territory = territory
             else:
                 customer.territory = "All Territories"
+            if payment_term:
+                customer.payment_terms = payment_term
 
                 
             customer.append("accounts", {
                     "company": company,
-                    "account": "22200 - Trade receivables - B2C - AR"
+                    "account": "Debtors - MM"
                 })
             customer.save()
             return customer
@@ -1113,6 +1116,8 @@ def create_customer(
         customer_doc.gender = gender
         customer_doc.custom_invoice_name = custom_invoice_name  
         customer_doc.custom_vat_no = custom_vat_no
+        if payment_term:
+            customer_doc.payment_terms = payment_term
         customer_doc.save()
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
@@ -1720,6 +1725,7 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+    # res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
