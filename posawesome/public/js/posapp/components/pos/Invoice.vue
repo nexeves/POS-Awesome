@@ -261,7 +261,7 @@
                       dense
                       background-color="white"
                       :label="frappe._('UOM')"
-                      v-model="item.uom"
+                      v-model="item.stock_uom"
                       :items="item.item_uoms"
                       outlined
                       item-text="uom"
@@ -1108,6 +1108,7 @@ export default {
     },
 
     new_invoice(data = {}) {
+      console.log("new invoice")
       let old_invoice = null;
       evntBus.$emit("set_customer_readonly", false);
       this.expanded = [];
@@ -1180,7 +1181,9 @@ export default {
       evntBus.$emit("set_pos_coupons", []);
       this.posa_coupons = [];
       this.return_doc = "";
+      console.log('load new order')
       if (!data.name && !data.is_return) {
+        console.log(data)
         this.items = [];
         this.customer = this.pos_profile.customer;
         this.invoice_doc = "";
@@ -1189,6 +1192,7 @@ export default {
         this.invoiceType = "Invoice";
         this.invoiceTypes = ["Invoice", "Order"];
       } else {
+        console.log(data)
         if (data.is_return) {
           evntBus.$emit("set_customer_readonly", true);
           this.invoiceType = "Return";
@@ -1929,6 +1933,8 @@ export default {
     },
 
     calc_item_price(item) {
+      // console.log('calc_item_price');
+      
       if (!item.posa_offer_applied) {
         if (item.price_list_rate) {
           item.rate = item.price_list_rate;
@@ -2137,6 +2143,8 @@ export default {
       });
 
       this.setItemGiveOffer(offers);
+      console.log("from hanleoffer");
+      
       this.updatePosOffers(offers);
     },
 
@@ -2187,8 +2195,40 @@ export default {
       const item = this.items.find((el) => el.posa_row_id == row_id);
       return item;
     },
+    groupedItems() {
+            return this.items.reduce((groups, item) => {
+                const key = `${item.item_code}-${item.batch_no}`;
+                if (!groups[key]) {
+                    groups[key] = [];
+                }
+                groups[key].push(item);
+                return groups;
+            }, {});
+        },
+     getTotalQtyOfItem(items, itemName,value) {
+        // Initialize total quantity to 0
+        let totalQty = 0;
+        
+        // Iterate over each item in the array
+        items.forEach(item => {
+            // Check if the item's name matches the specified item name
+            if (item.item_code === itemName) {
+              
+                // Add the item's quantity to the total quantity
+                totalQty += parseInt(item[value], 10);
+            }
+        });
+
+        return totalQty;
+    },
 
     checkQtyAnountOffer(offer, qty, amount) {
+      // if (offer.apply_item_code!= null){
+      //   qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
+      // }
+      if (offer.apply_on == "Item Code"){
+        qty=this.getTotalQtyOfItem(this.items, offer.item,'qty');
+      }
       let min_qty = false;
       let max_qty = false;
       let min_amt = false;
@@ -2378,6 +2418,7 @@ export default {
                 items.push(item.posa_row_id);
               });
               offer.items = items;
+              offer.given_qty=res.given_qty
               apply_offer = offer;
             }
           }
@@ -2391,6 +2432,9 @@ export default {
     },
 
     updateInvoiceOffers(offers) {
+      console.log("heree offers")
+      console.log(offers)
+      // console.log(this.posa_offers)
       this.posa_offers.forEach((invoiceOffer) => {
         const existOffer = offers.find(
           (offer) => invoiceOffer.row_id == offer.row_id
@@ -2400,10 +2444,14 @@ export default {
         }
       });
       offers.forEach((offer) => {
+        console.log("ofer row", offer.row_id)
         const existOffer = this.posa_offers.find(
           (invoiceOffer) => invoiceOffer.row_id == offer.row_id
         );
+        console.log("invoffer", existOffer)
         if (existOffer) {
+          console.log("existoffer is there")
+          console.log(existOffer)
           existOffer.items = JSON.stringify(offer.items);
           if (
             existOffer.offer === "Give Product" &&
@@ -2491,18 +2539,25 @@ export default {
               }
             });
           } else if (existOffer.offer === "Item Price") {
+            console.log("this is from updateInvoiceOffers11112222!!!!")
+            console.log("1")
             this.ApplyOnPrice(offer);
           } else if (existOffer.offer === "Grand Total") {
             this.ApplyOnTotal(offer);
           }
           this.addOfferToItems(existOffer);
         } else {
+          // console.log("offer is", existOffer.offer)
+          console.log("1")
           this.applyNewOffer(offer);
+          // console.log("is this reaches here!!!", existOffer.offer)
         }
       });
     },
 
     removeApplyOffer(invoiceOffer) {
+      // console.log(invoiceOffer,"invoiceOfferinvoiceOffer");
+      
       if (invoiceOffer.offer === "Item Price") {
         this.RemoveOnPrice(invoiceOffer);
         const index = this.posa_offers.findIndex(
@@ -2538,6 +2593,8 @@ export default {
 
     applyNewOffer(offer) {
       if (offer.offer === "Item Price") {
+        console.log("the offer is", offer.name, offer.offer, offer.apply_on)
+        console.log("this is from applyNewOffer!!!!")
         this.ApplyOnPrice(offer);
       }
       if (offer.offer === "Give Product") {
@@ -2636,9 +2693,17 @@ export default {
       if (!item) {
         return;
       }
+      if (offer.apply_item_code!= null){
+        qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
+      }
+      // console.log("QTY GIVE", qty)
       const new_item = { ...item };
-      new_item.qty = offer.given_qty;
-      new_item.stock_qty = offer.given_qty;
+      let match_item = this.items.find(
+            (el) => el.item_code == offer.give_item
+          );
+      let last_added_item = qty;
+      new_item.qty = Math.floor(last_added_item / offer.min_qty) * offer.given_qty;
+      new_item.stock_qty = Math.floor(last_added_item / offer.min_qty) * offer.given_qty;
       new_item.rate = offer.discount_type === "Rate" ? offer.rate : item.rate;
       new_item.discount_amount =
         offer.discount_type === "Discount Amount" ? offer.discount_amount : 0;
@@ -2680,16 +2745,25 @@ export default {
     },
 
     ApplyOnPrice(offer) {
+      // console.log("apply on priceeee")
       this.items.forEach((item) => {
-        if (offer.items.includes(item.posa_row_id)) {
+      // console.log("Item codee", item.item_code )
+      // console.log("Offer Item ***", offer.item)
+        if (item.item_code === offer.item || offer.items.includes(item.posa_row_id)) {
+          // console.log("in item.item_code === offer.item || offer.items.includes(item.posa_row_id");
           const item_offers = JSON.parse(item.posa_offers);
+          // console.log(offer.row_id,"offer.row_id");
+          // console.log(item_offers,"item_offers");
+          
           if (!item_offers.includes(offer.row_id)) {
+            // console.log("in !item_offers ");
+            
             if (offer.discount_type === "Rate") {
               item.rate = offer.rate;
             } else if (offer.discount_type === "Discount Percentage") {
-              item.discount_percentage += offer.discount_percentage;
+              item.discount_percentage = offer.discount_percentage;
             } else if (offer.discount_type === "Discount Amount") {
-              item.discount_amount += offer.discount_amount;
+              item.discount_amount = offer.discount_amount;
             }
             item.posa_offer_applied = 1;
             this.calc_item_price(item);
@@ -2934,6 +3008,9 @@ export default {
       this.posOffers = data;
     });
     evntBus.$on("update_invoice_offers", (data) => {
+      console.log("hereeeeeeeeeeeee@@@@@");
+      console.log(data);
+      
       this.updateInvoiceOffers(data);
     });
     evntBus.$on("update_invoice_coupons", (data) => {
@@ -3004,6 +3081,8 @@ export default {
     items: {
       deep: true,
       handler(items) {
+        console.log("from items watch");
+        
         this.handelOffers();
         this.$forceUpdate();
       },

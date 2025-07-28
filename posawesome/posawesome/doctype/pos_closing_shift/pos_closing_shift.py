@@ -212,7 +212,10 @@ def make_closing_shift_from_opening(opening_shift):
                 )
                 if not cash_mode_of_payment:
                     cash_mode_of_payment = "Cash"
-                if existing_pay[0].mode_of_payment == cash_mode_of_payment:
+
+                cash_mode_keywords = [cash_mode_of_payment] if isinstance(cash_mode_of_payment, str) else cash_mode_of_payment
+
+                if any(existing_pay[0].mode_of_payment.startswith(keyword) for keyword in cash_mode_keywords):
                     amount = p.amount - d.change_amount
                 else:
                     amount = p.amount
@@ -223,7 +226,7 @@ def make_closing_shift_from_opening(opening_shift):
                         {
                             "mode_of_payment": p.mode_of_payment,
                             "opening_amount": 0,
-                            "expected_amount": p.amount,
+                            "expected_amount": p.amount - d.change_amount,
                         }
                     )
                 )

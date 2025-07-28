@@ -27,7 +27,27 @@
                   v-model="customer_name"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+               <v-col cols="6" >
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Customer Invoice Name')"
+                  background-color="white"
+                  hide-details
+                  v-model="custom_invoice_name"
+                ></v-text-field>
+              </v-col>
+               <v-col cols="6" >
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Vat Number')"
+                  background-color="white"
+                  hide-details
+                  v-model="custom_vat_no"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="6" v-show="false">
                 <v-text-field
                   dense
                   color="primary"
@@ -47,7 +67,7 @@
                   v-model="mobile_no"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <v-col cols="6" v-show="false">
                 <v-text-field
                   dense
                   color="primary"
@@ -65,7 +85,7 @@
                   v-model="gender"
                 ></v-select>
               </v-col>
-              <v-col cols="6">
+              <v-col cols="6" v-show="false">
                 <v-text-field
                   dense
                   color="primary"
@@ -75,7 +95,7 @@
                   v-model="referral_code"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <v-col cols="6" v-show="false">
                 <v-menu
                   ref="birthday_menu"
                   v-model="birthday_menu"
@@ -182,6 +202,8 @@ export default {
     pos_profile: '',
     customer_id: '',
     customer_name: '',
+    custom_invoice_name: '',
+    custom_vat_no: '',
     tax_id: '',
     mobile_no: '',
     email_id: '',
@@ -206,6 +228,8 @@ export default {
     },
     clear_customer() {
       this.customer_name = '';
+      this.custom_invoice_name = '';
+      this.custom_vat_no = '';
       this.tax_id = '';
       this.mobile_no = '';
       this.email_id = '';
@@ -298,6 +322,8 @@ export default {
         const args = {
           customer_id: this.customer_id,
           customer_name: this.customer_name,
+          custom_invoice_name: this.custom_invoice_name,
+          custom_vat_no: this.custom_vat_no,
           company: this.pos_profile.company,
           tax_id: this.tax_id,
           mobile_no: this.mobile_no,
@@ -348,6 +374,8 @@ export default {
       this.customerDialog = true;
       if (data) {
         this.customer_name = data.customer_name;
+        this.custom_invoice_name = data.custom_invoice_name;
+        this.custom_vat_no = data.custom_vat_no;
         this.customer_id = data.name;
         this.tax_id = data.tax_id;
         this.mobile_no = data.mobile_no;
