@@ -93,7 +93,7 @@
                 :rules="[isNumber]"
                 :prefix="currencySymbol(invoice_doc.currency)"
                 @focus="set_rest_amount(payment.idx)"
-                :readonly="invoice_doc.is_return ? true : false"
+                :readonly="invoice_doc.is_return ? true : false || payments_readonly"
               ></v-text-field>
             </v-col>
             <v-col
@@ -113,6 +113,7 @@
                 color="primary"
                 dark
                 @click="set_full_amount(payment.idx)"
+                :disabled="payments_readonly"
                 >{{ payment.mode_of_payment }}</v-btn
               >
             </v-col>
@@ -1428,11 +1429,20 @@ export default {
           text: `Loyalty Amount can not be more then ${this.available_pioints_amount}`,
           color: "error",
         });
-      } else {
+      }
+      else if (this.flt(value) <= 0) {
+        this.invoice_doc.loyalty_amount = 0;
+        this.invoice_doc.redeem_loyalty_points = 0;
+        this.invoice_doc.loyalty_points = 0;
+        this.payments_readonly = false;
+      } 
+      else {
         this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
         this.invoice_doc.redeem_loyalty_points = 1;
         this.invoice_doc.loyalty_points =
           this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
+        this.invoice_doc.payments.forEach(p => p.amount = 0);
+        this.payments_readonly = true;
       }
     },
     is_credit_sale(value) {
