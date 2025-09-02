@@ -152,6 +152,21 @@
           </v-menu>
         </v-col>
       </v-row>
+      <v-row align="center" class="items px-2 py-1 mt-0 pt-0">
+        <v-col cols="6" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_pioints_amount)"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+      </v-row>
 
       <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
         <template @mouseover="style = 'cursor: pointer'">
@@ -920,6 +935,14 @@ export default {
         sum += flt(item.qty) * flt(item.discount_amount);
       });
       return this.flt(sum, this.float_precision);
+    },
+    available_pioints_amount() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points) {
+        amount =
+          this.customer_info.loyalty_points;
+      }
+      return amount;
     },
   },
 
