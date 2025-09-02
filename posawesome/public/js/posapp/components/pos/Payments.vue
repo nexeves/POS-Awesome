@@ -736,6 +736,19 @@ export default {
       evntBus.$emit("set_customer_readonly", false);
     },
     submit(event, payment_received = false, print = false) {
+      let hasLoyalty = this.flt(this.loyalty_amount) > 0;
+      let hasCashPayment = this.invoice_doc.payments.some(
+        (p) => this.flt(p.amount) > 0
+      );
+
+      if (hasLoyalty && hasCashPayment) {
+        evntBus.$emit("show_mesage", {
+          text: __("You cannot use Loyalty Points together with another payment method."),
+          color: "error",
+        });
+        frappe.utils.play_sound("error");
+        return;
+      }
       if (!this.invoice_doc.is_return && this.total_payments < 0) {
         evntBus.$emit("show_mesage", {
           text: `Payments not correct`,
