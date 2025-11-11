@@ -1090,10 +1090,10 @@ def create_customer(
                 customer.payment_terms = payment_term
 
                 
-            customer.append("accounts", {
-                    "company": company,
-                    "account": "Debtors - MM"
-                })
+            # customer.append("accounts", {
+            #         "company": company,
+            #         # "account": "Debtors - MM"
+            #     })
             customer.save()
             return customer
         else:
