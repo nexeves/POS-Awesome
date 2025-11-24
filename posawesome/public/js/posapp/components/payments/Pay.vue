@@ -38,6 +38,17 @@
                   label="Select POS Profile"
                 ></v-select>
               </v-col>
+              <v-col md="4" cols="12" class="pl-2">
+                <v-text-field
+                  dense
+                  outlined
+                  background-color="white"
+                  hide-details
+                  v-model="invoice_search"
+                  label="Search by Invoice ID"
+                  clearable
+                ></v-text-field>
+              </v-col>
               <v-col> </v-col>
               <!-- <v-col md="3" cols="12">
                 <v-btn
@@ -437,7 +448,6 @@
 import { evntBus } from "../../bus";
 import format from "../../format";
 import Customer from "../pos/Customer.vue";
-// import UpdateCustomer from "../pos/UpdateCustomer.vue";
 
 export default {
   mixins: [format],
@@ -458,6 +468,7 @@ export default {
       mpesa_payments_loading: false,
       payment_methods: [],
       outstanding_invoices: [],
+      all_outstanding_invoices: [], // NEW: backup for filtering
       unallocated_payments: [],
       mpesa_payments: [],
       selected_invoices: [],
@@ -468,138 +479,62 @@ export default {
       payment_methods_list: [],
       mpesa_searchname: "",
       mpesa_search_mobile: "",
+      invoice_search: "",
       invoices_headers: [
-        {
-          text: __("Invoice"),
-          align: "start",
-          sortable: true,
-          value: "name",
-        },
-        {
-          text: __("Customer"),
-          align: "start",
-          sortable: true,
-          value: "customer_name",
-        },
-        {
-          text: __("Date"),
-          align: "start",
-          sortable: true,
-          value: "posting_date",
-        },
-        {
-          text: __("Sales Person"),
-          align: "start",
-          sortable: true,
-          value: "sales_person",
-        },
-        {
-          text: __("Total"),
-          align: "end",
-          sortable: true,
-          value: "grand_total",
-        },
+        { text: __("Invoice"), align: "start", sortable: true, value: "name" },
+        { text: __("Customer"), align: "start", sortable: true, value: "customer_name" },
+        { text: __("Date"), align: "start", sortable: true, value: "posting_date" },
+        { text: __("Sales Person"), align: "start", sortable: true, value: "sales_person" },
+        { text: __("Total"), align: "end", sortable: true, value: "grand_total" },
       ],
       unallocated_payments_headers: [
-        {
-          text: __("Payment ID"),
-          align: "start",
-          sortable: true,
-          value: "name",
-        },
-        {
-          text: __("Customer"),
-          align: "start",
-          sortable: true,
-          value: "customer_name",
-        },
-        {
-          text: __("Date"),
-          align: "start",
-          sortable: true,
-          value: "posting_date",
-        },
-        {
-          text: __("Mode"),
-          align: "start",
-          sortable: true,
-          value: "mode_of_payment",
-        },
-        {
-          text: __("Paid"),
-          align: "end",
-          sortable: true,
-          value: "paid_amount",
-        },
-        {
-          text: __("Unallocated"),
-          align: "end",
-          sortable: true,
-          value: "unallocated_amount",
-        },
+        { text: __("Payment ID"), align: "start", sortable: true, value: "name" },
+        { text: __("Customer"), align: "start", sortable: true, value: "customer_name" },
+        { text: __("Date"), align: "start", sortable: true, value: "posting_date" },
+        { text: __("Mode"), align: "start", sortable: true, value: "mode_of_payment" },
+        { text: __("Paid"), align: "end", sortable: true, value: "paid_amount" },
+        { text: __("Unallocated"), align: "end", sortable: true, value: "unallocated_amount" },
       ],
       mpesa_payment_headers: [
-        {
-          text: __("Payment ID"),
-          align: "start",
-          sortable: true,
-          value: "transid",
-        },
-        {
-          text: __("Full Name"),
-          align: "start",
-          sortable: true,
-          value: "full_name",
-        },
-        {
-          text: __("Nobile Number"),
-          align: "start",
-          sortable: true,
-          value: "mobile_no",
-        },
-        {
-          text: __("Date"),
-          align: "start",
-          sortable: true,
-          value: "posting_date",
-        },
-        {
-          text: __("Amount"),
-          align: "end",
-          sortable: true,
-          value: "amount",
-        },
+        { text: __("Payment ID"), align: "start", sortable: true, value: "transid" },
+        { text: __("Full Name"), align: "start", sortable: true, value: "full_name" },
+        { text: __("Nobile Number"), align: "start", sortable: true, value: "mobile_no" },
+        { text: __("Date"), align: "start", sortable: true, value: "posting_date" },
+        { text: __("Amount"), align: "end", sortable: true, value: "amount" },
       ],
     };
   },
 
   components: {
     Customer,
-    // UpdateCustomer,
+  },
+
+  watch: {
+    invoice_search(newVal) {
+      const search = newVal?.toLowerCase() || "";
+      this.outstanding_invoices = this.all_outstanding_invoices.filter(inv =>
+        inv.name?.toLowerCase().includes(search)
+      );
+    }
   },
 
   methods: {
-     print_invoice() {
+    print_invoice() {
       if (!this.selected_invoice || !this.pos_profile.print_format) {
         frappe.msgprint(__("Missing invoice or print format."));
         return;
       }
-
       const invoice_name = this.selected_invoice.name;
       const print_format = this.pos_profile.print_format;
-
       const print_url = `/printview?doctype=Sales Invoice&name=${invoice_name}&format=${print_format}&no_letterhead=0&_lang=en`;
 
-      // Create a hidden iframe
       const iframe = document.createElement('iframe');
       iframe.style.visibility = 'hidden';
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
       iframe.style.bottom = '0';
       iframe.src = print_url;
-
       document.body.appendChild(iframe);
-
       iframe.onload = function () {
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
@@ -633,31 +568,25 @@ export default {
           }
         });
     },
-  onInvoiceRowClick(item) {
-  this.selected_invoice = null; // clear previous
-
-  frappe.call({
-    method: "posawesome.posawesome.api.payment_entry.get_invoice_details",
-    args: {
-      invoice_id: item.name,
+    onInvoiceRowClick(item) {
+      this.selected_invoice = null;
+      frappe.call({
+        method: "posawesome.posawesome.api.payment_entry.get_invoice_details",
+        args: { invoice_id: item.name },
+        callback: (r) => {
+          if (r.message) {
+            this.selected_invoice = r.message;
+          }
+        },
+      });
     },
-    callback: (r) => {
-      if (r.message) {
-        this.selected_invoice = r.message;
-      }
-    },
-  });
-},
     get_available_pos_profiles() {
       if (!this.pos_profile.posa_allow_mpesa_reconcile_payments) return;
       return frappe
-        .call(
-          "posawesome.posawesome.api.payment_entry.get_available_pos_profiles",
-          {
-            company: this.company,
-            currency: this.pos_profile.currency,
-          }
-        )
+        .call("posawesome.posawesome.api.payment_entry.get_available_pos_profiles", {
+          company: this.company,
+          currency: this.pos_profile.currency,
+        })
         .then((r) => {
           if (r.message) {
             this.pos_profiles_list = r.message;
@@ -668,22 +597,16 @@ export default {
       this.dialog = true;
     },
     fetch_customer_details() {
-      const vm = this;
       if (this.customer_name) {
         frappe.call({
           method: "posawesome.posawesome.api.posapp.get_customer_info",
-          args: {
-            customer: vm.customer_name,
-          },
+          args: { customer: this.customer_name },
           async: false,
           callback: (r) => {
-            const message = r.message;
             if (!r.exc) {
-              vm.customer_info = {
-                ...message,
-              };
-              vm.set_mpesa_search_params();
-              evntBus.$emit("set_customer_info_to_edit", vm.customer_info);
+              this.customer_info = { ...r.message };
+              this.set_mpesa_search_params();
+              evntBus.$emit("set_customer_info_to_edit", this.customer_info);
             }
           },
         });
@@ -695,18 +618,16 @@ export default {
     get_outstanding_invoices() {
       this.invoices_loading = true;
       return frappe
-        .call(
-          "posawesome.posawesome.api.payment_entry.get_invoices",
-          {
-            customer: this.customer_name,
-            company: this.company,
-            currency: this.pos_profile.currency,
-            pos_profile_name: this.pos_profile_search,
-          }
-        )
+        .call("posawesome.posawesome.api.payment_entry.get_invoices", {
+          customer: this.customer_name,
+          company: this.company,
+          currency: this.pos_profile.currency,
+          pos_profile_name: this.pos_profile_search,
+        })
         .then((r) => {
           if (r.message) {
-            this.outstanding_invoices = r.message;
+            this.all_outstanding_invoices = r.message; // store full
+            this.outstanding_invoices = [...this.all_outstanding_invoices]; // reset current
             this.invoices_loading = false;
           }
         });
@@ -720,14 +641,11 @@ export default {
         return;
       }
       return frappe
-        .call(
-          "posawesome.posawesome.api.payment_entry.get_unallocated_payments",
-          {
-            customer: this.customer_name,
-            company: this.company,
-            currency: this.pos_profile.currency,
-          }
-        )
+        .call("posawesome.posawesome.api.payment_entry.get_unallocated_payments", {
+          customer: this.customer_name,
+          company: this.company,
+          currency: this.pos_profile.currency,
+        })
         .then((r) => {
           if (r.message) {
             this.unallocated_payments = r.message;
@@ -748,27 +666,21 @@ export default {
     },
     get_draft_mpesa_payments_register() {
       if (!this.pos_profile.posa_allow_mpesa_reconcile_payments) return;
-      const vm = this;
       this.mpesa_payments_loading = true;
       return frappe
         .call("posawesome.posawesome.api.m_pesa.get_mpesa_draft_payments", {
-          company: vm.company,
+          company: this.company,
           mode_of_payment: null,
-          full_name: vm.mpesa_search_name || null,
-          mobile_no: vm.mpesa_search_mobile || null,
-          payment_methods_list: vm.payment_methods_list,
+          full_name: this.mpesa_search_name || null,
+          mobile_no: this.mpesa_search_mobile || null,
+          payment_methods_list: this.payment_methods_list,
         })
         .then((r) => {
-          if (r.message) {
-            vm.mpesa_payments = r.message;
-          } else {
-            vm.mpesa_payments = [];
-          }
-          vm.mpesa_payments_loading = false;
+          this.mpesa_payments = r.message || [];
+          this.mpesa_payments_loading = false;
         });
     },
     set_payment_methods() {
-
       if (!this.pos_profile.posa_allow_make_new_payments) return;
       this.payment_methods = [];
       this.pos_profile.payments.forEach((method) => {
@@ -789,6 +701,7 @@ export default {
       this.mpesa_payments = [];
       this.selected_mpesa_payments = [];
       this.outstanding_invoices = [];
+      this.all_outstanding_invoices = [];
       this.unallocated_payments = [];
       this.selected_invoices = [];
       this.selected_payments = [];
@@ -797,7 +710,6 @@ export default {
     },
     submit() {
       const customer = this.customer_name;
-      const vm = this;
       if (!customer) {
         frappe.throw(__("Please select a customer"));
         return;
@@ -817,43 +729,39 @@ export default {
         frappe.throw(__("Please select an invoice"));
         return;
       }
-
       this.payment_methods.forEach((payment) => {
         payment.amount = flt(payment.amount);
       });
-
-      const payload = {};
-      payload.customer = customer;
-      payload.company = this.company;
-      payload.currency = this.pos_profile.currency;
-      payload.pos_opening_shift_name = this.pos_opening_shift.name;
-      payload.pos_profile_name = this.pos_profile.name;
-      payload.pos_profile = this.pos_profile;
-      payload.payment_methods = this.payment_methods;
-      payload.selected_invoices = this.selected_invoices;
-      payload.selected_payments = this.selected_payments;
-      payload.total_selected_invoices = flt(this.total_selected_invoices);
-      payload.selected_mpesa_payments = this.selected_mpesa_payments;
-      payload.total_selected_payments = flt(this.total_selected_payments);
-      payload.total_payment_methods = flt(this.total_payment_methods);
-      payload.total_selected_mpesa_payments = flt(
-        this.total_selected_mpesa_payments
-      );
-
+      const payload = {
+        customer,
+        company: this.company,
+        currency: this.pos_profile.currency,
+        pos_opening_shift_name: this.pos_opening_shift.name,
+        pos_profile_name: this.pos_profile.name,
+        pos_profile: this.pos_profile,
+        payment_methods: this.payment_methods,
+        selected_invoices: this.selected_invoices,
+        selected_payments: this.selected_payments,
+        total_selected_invoices: flt(this.total_selected_invoices),
+        selected_mpesa_payments: this.selected_mpesa_payments,
+        total_selected_payments: flt(this.total_selected_payments),
+        total_payment_methods: flt(this.total_payment_methods),
+        total_selected_mpesa_payments: flt(this.total_selected_mpesa_payments),
+      };
       frappe.call({
         method: "posawesome.posawesome.api.payment_entry.process_pos_payment",
         args: { payload },
         freeze: true,
         freeze_message: __("Processing Payment"),
-        callback: function (r) {
+        callback: (r) => {
           if (r.message) {
             frappe.utils.play_sound("submit");
-            vm.clear_all(false);
-            vm.customer_name = customer;
-            vm.get_outstanding_invoices();
-            vm.get_unallocated_payments();
-            vm.set_mpesa_search_params();
-            vm.get_draft_mpesa_payments_register();
+            this.clear_all(false);
+            this.customer_name = customer;
+            this.get_outstanding_invoices();
+            this.get_unallocated_payments();
+            this.set_mpesa_search_params();
+            this.get_draft_mpesa_payments_register();
           }
         },
       });
@@ -900,9 +808,9 @@ export default {
     total_of_diff() {
       return flt(
         this.total_selected_invoices -
-          this.total_selected_payments -
-          this.total_selected_mpesa_payments -
-          this.total_payment_methods
+        this.total_selected_payments -
+        this.total_selected_mpesa_payments -
+        this.total_payment_methods
       );
     },
   },
@@ -929,7 +837,6 @@ export default {
   },
 };
 </script>
-
 <style>
 input[total_of_diff] {
   text-align: right;

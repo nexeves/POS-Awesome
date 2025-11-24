@@ -1092,7 +1092,7 @@ def create_customer(
                 
             # customer.append("accounts", {
             #         "company": company,
-            #         # "account": "Debtors - MM"
+            #         "account": "Debtors - MM"
             #     })
             customer.save()
             return customer

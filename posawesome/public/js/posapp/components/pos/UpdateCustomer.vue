@@ -159,7 +159,8 @@
                 >
                 </v-autocomplete>
               </v-col>
-              <v-col cols="6">
+                <!--
+                <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -172,7 +173,8 @@
                   :no-data-text="__('Payment Term Template not found')"
                   hide-details
                 ></v-autocomplete>
-              </v-col>
+                </v-col>
+                -->
               <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
                   v-model="loyalty_program"
