@@ -61,6 +61,12 @@ const controllers = (frm) => {
 	frm.toggle_display('item_group', frm.doc.apply_on === 'Item Group');
 	frm.toggle_reqd('item_group', frm.doc.apply_on === 'Item Group');
 
+	frm.toggle_display('custom_from_itemcode', frm.doc.apply_on === 'Item Group');
+	frm.toggle_reqd('custom_from_itemcode', frm.doc.apply_on === 'Item Group');
+
+	frm.toggle_display('custom_to_itemcode', frm.doc.apply_on === 'Item Group');
+	frm.toggle_reqd('custom_to_itemcode', frm.doc.apply_on === 'Item Group');
+
 	frm.toggle_display('brand', frm.doc.apply_on === 'Brand');
 	frm.toggle_reqd('brand', frm.doc.apply_on === 'Brand');
 
@@ -105,7 +111,7 @@ const controllers = (frm) => {
 	frm.toggle_reqd('loyalty_points', frm.doc.offer === 'Loyalty Point');
 
 	if (frm.doc.offer === 'Grand Total') {
-		frm.set_df_property('discount_type', 'options', ['Discount Percentage']);
+		frm.set_df_property('discount_type', 'options', ['Discount Percentage','Discount Amount']);
 	} else {
 		frm.set_df_property('discount_type', 'options', ['', 'Rate', 'Discount Percentage', 'Discount Amount']);
 	}
@@ -165,4 +171,21 @@ const set_filters = (frm) => {
 			}
 		};
 	});
+	frm.set_query("custom_from_itemcode", function() {
+    	return {
+    	    query: "erpnext.controllers.queries.item_query",
+    	    filters: {
+    	        item_group: frm.doc.item_group
+    	    }
+    	};
+	});
+	frm.set_query("custom_to_itemcode", function() {
+    	return {
+    	    query: "erpnext.controllers.queries.item_query",
+    	    filters: {
+    	        item_group: frm.doc.item_group
+    	    }
+    	};
+	});
+
 };
