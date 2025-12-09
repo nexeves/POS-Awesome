@@ -2161,6 +2161,17 @@ export default {
         }
       });
     },
+    filterItemCodeByRange(item, offer) {
+      if (!offer.custom_from_itemcode || !offer.custom_to_itemcode) return true;
+
+      const code = item.item_code;
+
+      return (
+        code >= offer.custom_from_itemcode &&
+        code <= offer.custom_to_itemcode
+      );
+    },
+
 
     getCheapestItem(offer) {
       let itemsRowID;
@@ -2289,7 +2300,8 @@ export default {
           let total_count = 0;
           let total_amount = 0;
           this.items.forEach((item) => {
-            if (!item.posa_is_offer && item.item_group === offer.item_group) {
+            if (!item.posa_is_offer && item.item_group === offer.item_group && this.filterItemCodeByRange(item, offer)) {
+
               if (
                 offer.offer === "Item Price" &&
                 item.posa_offer_applied &&
@@ -2724,23 +2736,43 @@ export default {
       });
     },
 
-    ApplyOnTotal(offer) {
+ 
+      ApplyOnTotal(offer) {
       if (!offer.name) {
         offer = this.posOffers.find((el) => el.name == offer.offer_name);
       }
-      if (
-        (!this.discount_percentage_offer_name ||
-          this.discount_percentage_offer_name == offer.name) &&
-        offer.discount_percentage > 0 &&
-        offer.discount_percentage <= 100
-      ) {
-        this.discount_amount = this.flt(
-          (flt(this.Total) * flt(offer.discount_percentage)) / 100,
-          this.currency_precision
-        );
-        this.discount_percentage_offer_name = offer.name;
+
+      // If discount type is Percentage
+      if (offer.discount_type === "Discount Percentage") {
+        if (
+          (!this.discount_percentage_offer_name ||
+            this.discount_percentage_offer_name == offer.name) &&
+          offer.discount_percentage > 0 &&
+          offer.discount_percentage <= 100
+        ) {
+          this.discount_amount = this.flt(
+            (flt(this.Total) * flt(offer.discount_percentage)) / 100,
+            this.currency_precision
+          );
+          
+
+          this.discount_percentage_offer_name = offer.name;
+        }
       }
-    },
+
+      if (offer.discount_type === "Discount Amount") {
+          let disc = this.flt(offer.discount_amount, this.currency_precision);
+      
+          // ensure discount never exceeds the current total
+          if (disc > this.Total) {
+              disc = this.Total;
+          }
+        
+          this.discount_amount = disc;
+          this.discount_percentage_offer_name = null;
+      }
+      
+  },
 
     RemoveOnTotal(offer) {
       if (

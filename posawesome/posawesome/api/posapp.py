@@ -1696,6 +1696,7 @@ def get_customer_info(customer):
     res["posa_discount"] = customer.posa_discount
     res["name"] = customer.name
     res["customer_name"] = customer.customer_name
+    res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore 
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
@@ -1709,6 +1710,8 @@ def get_customer_info(customer):
         )
         res["loyalty_points"] = lp_details.get("loyalty_points")
         res["conversion_factor"] = lp_details.get("conversion_factor")
+
+
 
     return res
 
