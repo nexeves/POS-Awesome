@@ -2162,15 +2162,20 @@ export default {
       });
     },
     filterItemCodeByRange(item, offer) {
-      if (!offer.custom_from_itemcode || !offer.custom_to_itemcode) return true;
-
-      const code = item.item_code;
-
-      return (
-        code >= offer.custom_from_itemcode &&
-        code <= offer.custom_to_itemcode
-      );
+        const code = item.item_code;
+    
+        if (offer.custom_items && offer.custom_items.length > 0) {
+            return offer.custom_items.some(row => row.item_code == code);
+        }
+      
+        if (offer.custom_from_itemcode && offer.custom_to_itemcode) {
+            return code >= offer.custom_from_itemcode &&
+                   code <= offer.custom_to_itemcode;
+        }
+      
+        return true;
     },
+
 
 
     getCheapestItem(offer) {

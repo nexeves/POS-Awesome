@@ -22,6 +22,10 @@
   "item",
   "item_group",
   "brand",
+  "custom_from_itemcode",
+  "custom_to_itemcode",
+  "get_items",
+  "custom_items",
   "valid_from",
   "valid_upto",
   "coupon_based",
@@ -305,13 +309,39 @@
    "fieldname": "coupon_based",
    "fieldtype": "Check",
    "label": "Coupon Code Based"
+  },
+  {
+   "fieldname": "custom_from_itemcode",
+   "fieldtype": "Link",
+   "label": "From Itemcode",
+   "options": "Item"
+  },
+  {
+   "fieldname": "custom_to_itemcode",
+   "fieldtype": "Link",
+   "label": "To Itemcode",
+   "options": "Item"
+  },
+  {
+   "allow_bulk_edit": 1,
+   "fieldname": "custom_items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "POS Offer Item Range"
+  },
+  {
+   "fieldname": "get_items",
+   "fieldtype": "Button",
+   "label": "Get Items"
   }
  ],
  "index_web_pages_for_search": 1,
- "modified": "2021-07-25 17:09:55.634113",
+ "links": [],
+ "modified": "2025-12-08 17:19:56.578394",
  "modified_by": "Administrator",
  "module": "POSAwesome",
  "name": "POS Offer",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -385,5 +415,6 @@
  "show_preview_popup": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
+ "states": [],
  "track_changes": 1
 }

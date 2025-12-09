@@ -157,7 +157,7 @@
           class="pyments px-1 py-0"
           v-if="
             invoice_doc &&
-            available_pioints_amount > 0 &&
+            available_pioints_amount > 200 &&
             !invoice_doc.is_return
           "
         >
