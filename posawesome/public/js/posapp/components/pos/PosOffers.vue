@@ -95,7 +95,6 @@ import format from '../../format';
 export default {
   mixins: [format],
   data: () => ({
-    custom_offer_auto_ignore: 0,
     loading: false,
     pos_profile: '',
     pos_offers: [],
@@ -160,9 +159,7 @@ export default {
             pos_offer.offer === 'Grand Total' &&
             !this.discount_percentage_offer_name
           ) {
-            pos_offer.offer_applied =
-              this.custom_offer_auto_ignore == 0 && pos_offer.auto == 1;
-
+            pos_offer.offer_applied = !!pos_offer.auto;
           }
           if (
             offer.apply_on == 'Item Group' &&
@@ -196,7 +193,7 @@ export default {
             ) {
               newOffer.offer_applied = false;
             } else {
-              newOffer.offer_applied = this.custom_offer_auto_ignore == 0 && offer.auto == 1;
+              newOffer.offer_applied = !!offer.auto;
             }
           }
           if (newOffer.offer == 'Give Product' && !newOffer.give_item) {
@@ -284,19 +281,6 @@ export default {
       if (this.customer != customer) {
         this.offers = [];
       }
-      this.customer = customer;
-      frappe.call({
-        method: 'posawesome.posawesome.api.posapp.get_customer_info', // update this path
-        args: { customer },
-        callback: (r) => {
-          if (r.message) {
-            this.custom_offer_auto_ignore = r.message.custom_offer_auto_ignore || 0;
-            console.log(
-              `Customer: ${r.message.customer_name}, Auto Apply Flag: ${this.custom_offer_auto_ignore}`
-            );
-          }
-        },
-      });
     });
     evntBus.$on('update_pos_offers', (data) => {
       this.updatePosOffers(data);
