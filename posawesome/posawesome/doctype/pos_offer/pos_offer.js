@@ -67,6 +67,11 @@ const controllers = (frm) => {
 	frm.toggle_display('custom_to_itemcode', frm.doc.apply_on === 'Item Group');
 	frm.toggle_reqd('custom_to_itemcode', frm.doc.apply_on === 'Item Group');
 
+	frm.toggle_display('custom_items', frm.doc.apply_on === 'Item Group');
+	frm.toggle_reqd('custom_items', frm.doc.apply_on === 'Item Group');	
+
+	frm.toggle_display('get_items', frm.doc.apply_on === 'Item Group');
+
 	frm.toggle_display('brand', frm.doc.apply_on === 'Brand');
 	frm.toggle_reqd('brand', frm.doc.apply_on === 'Brand');
 
@@ -132,7 +137,16 @@ const controllers = (frm) => {
 		frm.set_value('replace_cheapest_item', 0);
 	}
 
+
+
+
 };
+ frappe.ui.form.on('POS Offer', {
+    get_items(frm) {
+        show_items_in_range(frm);
+    }
+});
+
 
 const set_filters = (frm) => {
 	frm.set_query('pos_profile', function () {
@@ -187,5 +201,51 @@ const set_filters = (frm) => {
     	    }
     	};
 	});
-
 };
+
+function show_items_in_range(frm) {
+
+    if (!frm.doc.item_group || !frm.doc.custom_from_itemcode || !frm.doc.custom_to_itemcode) {
+        frappe.msgprint("Please select Item Group, From Item Code, and To Item Code.");
+        return;
+    }
+
+    let from_code = cint(frm.doc.custom_from_itemcode);
+    let to_code = cint(frm.doc.custom_to_itemcode);
+
+    if (from_code > to_code) {
+        frappe.msgprint("From Item Code cannot be greater than To Item Code.");
+        return;
+    }
+
+    frappe.call({
+        method: "frappe.client.get_list",
+        args: {
+            doctype: "Item",
+            fields: ["name", "item_group", "item_code","item_name"],
+            filters: {
+                item_group: frm.doc.item_group
+            },
+            limit_page_length: 2000
+        },
+        callback: function(r) {
+
+            frm.clear_table("custom_items");
+
+            (r.message || []).forEach(item => {
+                let code = cint(item.item_code);
+
+                if (code >= from_code && code <= to_code) {
+                    let row = frm.add_child("custom_items");
+                    row.item_code = item.item_code;
+                    row.item_group = item.item_group;
+					row.item_name = item.item_name;
+                }
+            });
+
+            frm.refresh_field("custom_items");
+
+            frappe.msgprint("Items loaded successfully.");
+        }
+    });
+}
