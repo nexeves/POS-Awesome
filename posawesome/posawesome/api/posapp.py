@@ -12,6 +12,7 @@ from erpnext.stock.get_item_details import get_item_details
 from erpnext.accounts.doctype.pos_profile.pos_profile import get_item_groups
 from frappe.utils.background_jobs import enqueue
 from erpnext.accounts.party import get_party_bank_account
+from erpnext.accounts.utils import get_balance_on
 from erpnext.stock.doctype.batch.batch import (
     get_batch_no,
     get_batch_qty,
@@ -1207,34 +1208,59 @@ def set_customer_info(customer, fieldname, value=""):
         frappe.set_value(
             "Customer", customer, "customer_primary_contact", contact_doc.name
         )
-
-
+        
 @frappe.whitelist()
 def search_invoices_for_return(invoice_name, company):
+
+    query = (invoice_name or "").strip()
+    if not query:
+        return []
+
+    has_return = frappe.db.exists(
+        "Sales Invoice",
+        {
+            "return_against": query,
+            "is_return": 1,
+            "docstatus": 1
+        }
+    )
+    if has_return:
+        return []
+
+    customers = frappe.get_list(
+        "Customer",
+        or_filters=[
+            ["customer_name", "like", f"%{query}%"],
+            ["mobile_no", "like", f"%{query}%"],
+        ],
+        pluck="name"
+    )
+
     invoices_list = frappe.get_list(
         "Sales Invoice",
         filters={
-            "name": ["like", f"%{invoice_name}%"],
             "company": company,
             "docstatus": 1,
-            "is_return": 0,
+            "is_return": 0,        
         },
+        or_filters=[
+            ["name", "like", f"%{query}%"],
+            ["customer_name", "like", f"%{query}%"],
+            ["customer", "in", customers] if customers else ["name", "=", None],
+        ],
         fields=["name"],
         limit_page_length=0,
-        order_by="customer",
+        order_by="customer"
     )
-    data = []
-    is_returned = frappe.get_all(
-        "Sales Invoice",
-        filters={"return_against": invoice_name, "docstatus": 1},
-        fields=["name"],
-        order_by="customer",
-    )
-    if len(is_returned):
-        return data
-    for invoice in invoices_list:
-        data.append(frappe.get_doc("Sales Invoice", invoice["name"]))
-    return data
+
+    final_list = []
+    for inv in invoices_list:
+        if not frappe.db.exists("Sales Invoice",
+            {"return_against": inv["name"], "is_return": 1, "docstatus": 1}
+        ):
+            final_list.append(inv)
+
+    return [frappe.get_doc("Sales Invoice", inv["name"]) for inv in final_list]
 
 
 @frappe.whitelist()
@@ -1699,6 +1725,12 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+    res["party_balance"] = get_balance_on(
+    party_type="Customer",
+    party=customer.name
+    )
+
+
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
