@@ -152,6 +152,34 @@
           </v-menu>
         </v-col>
       </v-row>
+      <v-row align="center" class="items px-2 py-1 mt-0 pt-0">
+        <v-col cols="6" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_pioints_amount)"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+        <v-col cols="6" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Customer Balance')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_customer_balance)"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+      </v-row>
 
       <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
         <template @mouseover="style = 'cursor: pointer'">
@@ -921,7 +949,26 @@ export default {
       });
       return this.flt(sum, this.float_precision);
     },
-  },
+    available_pioints_amount() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points) {
+        amount =
+          this.customer_info.loyalty_points *
+          this.customer_info.conversion_factor;
+      }
+      return amount;
+    }, 
+    available_customer_balance() {
+      let amount = 0;
+      if (this.customer_info.party_balance) {
+        amount = this.customer_info.party_balance;
+      }
+      return amount;
+    },
+
+    
+   },
+
 
   methods: {
     remove_item(item) {
