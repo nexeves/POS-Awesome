@@ -961,7 +961,7 @@ export default {
     available_customer_balance() {
       let amount = 0;
       if (this.customer_info.party_balance) {
-        amount = this.customer_info.party_balance;
+        amount = this.customer_info.party_balance*-1;
       }
       return amount;
     },
