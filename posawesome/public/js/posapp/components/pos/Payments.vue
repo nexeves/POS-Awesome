@@ -1418,20 +1418,7 @@ export default {
   },
 
   watch: {
-    loyalty_amount(value) {
-      // NEW RULE: Loyalty points must be 200 or more
-      if (this.customer_info.loyalty_points < 200) {
-        this.loyalty_amount = 0;
-        this.invoice_doc.loyalty_amount = 0;
-        this.invoice_doc.redeem_loyalty_points = 0;
-        this.invoice_doc.loyalty_points = 0;
-      
-        evntBus.$emit("show_mesage", {
-          text: `Loyalty points can only be redeemed when you have at least 200 points.`,
-          color: "error",
-        });
-        return;
-      }
+ 
     
       if (value > this.available_pioints_amount) {
         this.invoice_doc.loyalty_amount = 0;
