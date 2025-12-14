@@ -471,6 +471,17 @@
                       disabled
                     ></v-text-field>
                   </v-col>
+                  <v-col cols="4" class="d-flex align-center">
+               <v-btn
+                  color="primary"
+                  small
+                  @click="open_stock(item)"
+                >
+                  Check Warehouse
+                </v-btn>
+                
+                  </v-col>
+
                   <v-col align="center" cols="4" v-if="item.posa_offer_applied">
                     <v-checkbox
                       dense
@@ -1745,6 +1756,13 @@ export default {
 
     open_returns() {
       evntBus.$emit("open_returns", this.pos_profile.company);
+    },
+    open_stock(item) {
+      evntBus.$emit('open_stock', {
+        company: this.pos_profile.company,
+        item_code: item.item_code,
+        current_warehouse: this.pos_profile.warehouse,
+      });
     },
 
     close_payments() {
