@@ -152,6 +152,7 @@
             </v-col>
           </v-row>
         </div>
+        <LoyaltyOTPDialog ref="loyaltyOTPDialog"></LoyaltyOTPDialog>
 
         <v-row
           class="pyments px-1 py-0"
@@ -161,7 +162,7 @@
             !invoice_doc.is_return
           "
         >
-          <v-col cols="7">
+          <v-col cols="5">
             <v-text-field
               dense
               outlined
@@ -172,8 +173,26 @@
               v-model="loyalty_amount"
               type="number"
               :prefix="currencySymbol(invoice_doc.currency)"
-            ></v-text-field>
+              :disabled="true"
+              :class="{ 'success--text': loyalty_otp_verified }"
+            >
+              <template v-slot:append v-if="loyalty_otp_verified">
+                <v-icon color="success">mdi-check-circle</v-icon>
+              </template>
+            </v-text-field>
           </v-col>
+          
+          <v-col cols="2">
+            <v-btn
+              block
+              :color="loyalty_otp_verified ? 'success' : 'primary'"
+              @click="openLoyaltyOTPDialog"
+              :disabled="loyalty_otp_verified"
+            >
+              <v-icon>{{ loyalty_otp_verified ? 'mdi-check' : 'mdi-gift' }}</v-icon>
+            </v-btn>
+          </v-col>
+          
           <v-col cols="5">
             <v-text-field
               dense
@@ -702,6 +721,7 @@
 <script>
 import { evntBus } from "../../bus";
 import format from "../../format";
+import LoyaltyOTPDialog from "./LoyaltyOTPDialog.vue";
 export default {
   mixins: [format],
   data: () => ({
@@ -709,6 +729,7 @@ export default {
     pos_profile: "",
     invoice_doc: "",
     loyalty_amount: 0,
+    loyalty_otp_verified: false,
     is_credit_sale: 0,
     is_write_off_change: 0,
     date_menu: false,
@@ -730,6 +751,9 @@ export default {
     mpesa_modes: [],
   }),
 
+  components: {
+    LoyaltyOTPDialog,
+  },
   methods: {
     back_to_invoice() {
       evntBus.$emit("show_payment", "false");
@@ -1245,6 +1269,182 @@ export default {
       this.clear_all_amounts();
       this.customer_credit_dict.push(advance);
     },
+    openLoyaltyOTPDialog() {
+      if (!this.invoice_doc || !this.invoice_doc.customer) {
+        evntBus.$emit("show_mesage", {
+          text: this.__("Please select a customer first"),
+          color: "error",
+        });
+        return;
+      }
+
+      if (!this.customer_info || !this.customer_info.loyalty_program) {
+        evntBus.$emit("show_mesage", {
+          text: this.__("Customer is not enrolled in loyalty program"),
+          color: "error",
+        });
+        return;
+      }
+
+      if (!this.customer_info.mobile_no) {
+        evntBus.$emit("show_mesage", {
+          text: this.__("Customer mobile number not found. Please update customer details."),
+          color: "error",
+        });
+        return;
+      }
+
+      if (!this.available_pioints_amount || this.available_pioints_amount <= 0) {
+        evntBus.$emit("show_mesage", {
+          text: this.__("Customer has no loyalty points available"),
+          color: "error",
+        });
+        return;
+      }
+
+      // Show dialog for entering loyalty points amount
+      this.showLoyaltyPointsInput();
+    },
+
+    // ADD THIS METHOD
+    showLoyaltyPointsInput() {
+      const vm = this;
+      
+      // MINIMUM POINTS VALIDATION
+      const MIN_POINTS_REQUIRED = 200;
+      
+      if (this.available_pioints_amount < MIN_POINTS_REQUIRED) {
+        evntBus.$emit("show_mesage", {
+          text: this.__(
+            "Minimum {0} loyalty points required to redeem. You have {1} points.",
+            [MIN_POINTS_REQUIRED, this.formtFloat(this.available_pioints_amount)]
+          ),
+          color: "error",
+        });
+        return;
+      }
+      
+      const max_redeemable = Math.min(
+        this.available_pioints_amount,
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total
+      );
+
+      frappe.prompt(
+        [
+          {
+            fieldname: "loyalty_points",
+            label: this.__("Loyalty Points Amount to Redeem"),
+            fieldtype: "Currency",
+            reqd: 1,
+            default: MIN_POINTS_REQUIRED, // Default to minimum
+            description: this.__(
+              "Minimum: {0} | Available: {1} | Max Redeemable: {2}",
+              [
+                MIN_POINTS_REQUIRED,
+                this.formtFloat(this.available_pioints_amount),
+                this.formtFloat(max_redeemable),
+              ]
+            ),
+          },
+        ],
+        function (values) {
+          const points_amount = parseFloat(values.loyalty_points);
+
+          // Validate minimum
+          if (points_amount < MIN_POINTS_REQUIRED) {
+            evntBus.$emit("show_mesage", {
+              text: vm.__(
+                "Minimum {0} loyalty points required to redeem",
+                [MIN_POINTS_REQUIRED]
+              ),
+              color: "error",
+            });
+            return;
+          }
+
+          // Validate amount
+          if (points_amount <= 0) {
+            evntBus.$emit("show_mesage", {
+              text: vm.__("Please enter a valid amount"),
+              color: "error",
+            });
+            return;
+          }
+
+          if (points_amount > vm.available_pioints_amount) {
+            evntBus.$emit("show_mesage", {
+              text: vm.__("Insufficient loyalty points"),
+              color: "error",
+            });
+            return;
+          }
+
+          if (points_amount > max_redeemable) {
+            evntBus.$emit("show_mesage", {
+              text: vm.__(
+                "Cannot redeem more than invoice total ({0})",
+                [vm.formtFloat(max_redeemable)]
+              ),
+              color: "error",
+            });
+            return;
+          }
+
+          // Open OTP dialog
+          vm.$refs.loyaltyOTPDialog.openDialog({
+            customer: vm.invoice_doc.customer,
+            customer_name: vm.customer_info.customer_name,
+            mobile_number: vm.customer_info.mobile_no,
+            loyalty_points_to_redeem: points_amount,
+            loyalty_amount: points_amount,
+            currency: vm.currencySymbol(vm.invoice_doc.currency),
+          });
+        },
+        this.__("Redeem Loyalty Points"),
+        this.__("Continue")
+      );
+    },
+
+    // ADD THIS METHOD
+    applyVerifiedLoyaltyPoints(data) {
+      this.loyalty_otp_verified = true;
+      this.loyalty_amount = data.loyalty_amount;
+
+      // Update invoice doc with loyalty points
+      this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
+      this.invoice_doc.redeem_loyalty_points = 1;
+      this.invoice_doc.loyalty_points =
+        this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
+
+      evntBus.$emit("show_mesage", {
+        text: this.__(
+          "Loyalty points of {0} applied successfully",
+          [this.formtCurrency(this.loyalty_amount, this.invoice_doc.currency, 0)]
+        ),
+        color: "success",
+      });
+
+      // Force update to recalculate totals
+      this.$forceUpdate();
+    },
+
+    // ADD THIS METHOD
+    resetLoyaltyPoints() {
+      this.loyalty_otp_verified = false;
+      this.loyalty_amount = 0;
+      if (this.invoice_doc) {
+        this.invoice_doc.loyalty_amount = 0;
+        this.invoice_doc.redeem_loyalty_points = 0;
+        this.invoice_doc.loyalty_points = 0;
+      }
+    },
+
+    // UPDATE your existing back_to_invoice method to include:
+    back_to_invoice() {
+      this.resetLoyaltyPoints(); // ADD THIS LINE
+      evntBus.$emit("show_payment", "false");
+      evntBus.$emit("set_customer_readonly", false);
+    },
   },
 
   computed: {
@@ -1361,6 +1561,7 @@ export default {
           });
         }
         this.loyalty_amount = 0;
+        this.loyalty_otp_verified = false;
         this.get_addresses();
         this.get_sales_person_names();
       });
@@ -1397,6 +1598,9 @@ export default {
     evntBus.$on("set_mpesa_payment", (data) => {
       this.set_mpesa_payment(data);
     });
+    evntBus.$on("loyalty_otp_verified", (data) => {
+        this.applyVerifiedLoyaltyPoints(data);
+    });
   },
   created() {
     document.addEventListener("keydown", this.shortPay.bind(this));
@@ -1411,6 +1615,7 @@ export default {
     evntBus.$off("set_customer_info_to_edit");
     evntBus.$off("update_invoice_coupons");
     evntBus.$off("set_mpesa_payment");
+    evntBus.$off("loyalty_otp_verified");
   },
 
   destroyed() {
@@ -1418,20 +1623,30 @@ export default {
   },
 
   watch: {
+    // loyalty_amount(value) {
+    //   if (value > this.available_pioints_amount) {
+    //     this.invoice_doc.loyalty_amount = 0;
+    //     this.invoice_doc.redeem_loyalty_points = 0;
+    //     this.invoice_doc.loyalty_points = 0;
+    //     evntBus.$emit("show_mesage", {
+    //       text: `Loyalty Amount can not be more then ${this.available_pioints_amount}`,
+    //       color: "error",
+    //     });
+    //   } else {
+    //     this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
+    //     this.invoice_doc.redeem_loyalty_points = 1;
+    //     this.invoice_doc.loyalty_points =
+    //       this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
+    //   }
+    // },
     loyalty_amount(value) {
-      if (value > this.available_pioints_amount) {
-        this.invoice_doc.loyalty_amount = 0;
-        this.invoice_doc.redeem_loyalty_points = 0;
-        this.invoice_doc.loyalty_points = 0;
+      // Only validate if manually changed (shouldn't happen as field is disabled)
+      if (!this.loyalty_otp_verified && value > 0) {
+        this.loyalty_amount = 0;
         evntBus.$emit("show_mesage", {
-          text: `Loyalty Amount can not be more then ${this.available_pioints_amount}`,
-          color: "error",
+          text: this.__("Please verify OTP to redeem loyalty points"),
+          color: "warning",
         });
-      } else {
-        this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
-        this.invoice_doc.redeem_loyalty_points = 1;
-        this.invoice_doc.loyalty_points =
-          this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
       }
     },
     is_credit_sale(value) {
