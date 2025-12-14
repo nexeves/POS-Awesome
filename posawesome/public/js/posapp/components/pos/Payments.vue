@@ -72,7 +72,7 @@
         </v-row>
         <v-divider></v-divider>
 
-        <div v-if="is_cashback">
+        <div>
           <v-row
             class="pyments px-1 py-0"
             v-for="payment in invoice_doc.payments"
@@ -93,7 +93,7 @@
                 :rules="[isNumber]"
                 :prefix="currencySymbol(invoice_doc.currency)"
                 @focus="set_rest_amount(payment.idx)"
-                :readonly="invoice_doc.is_return ? true : false"
+                :readonly="invoice_doc.is_return && !is_cashback"
               ></v-text-field>
             </v-col>
             <v-col
@@ -1686,6 +1686,20 @@ export default {
         this.invoice_doc.sales_team = [];
       }
     },
-  },
-};
+    is_cashback(value) {
+      if (!value && this.invoice_doc?.is_return) {
+        this.invoice_doc.payments.forEach(payment => {
+          payment.amount = 0;
+          payment.base_amount = 0;
+        });
+
+        this.invoice_doc.is_pos = 0;
+      }
+    }, 
+
+
+
+
+    },
+};  
 </script>
