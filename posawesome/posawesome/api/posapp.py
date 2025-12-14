@@ -667,7 +667,22 @@ def submit_invoice(invoice, data):
                 },
             )
     else:
+
+        total_paid_amount = sum(
+            flt(p.amount) for p in (invoice_doc.payments or [])
+        )
+
+        is_credit_return = (
+            invoice_doc.is_return
+            and total_paid_amount == 0
+        )
+
+        if is_credit_return:
+            invoice_doc.is_pos = 0
+            invoice_doc.update_outstanding_for_self = 0
+
         invoice_doc.submit()
+
         redeeming_customer_credit(
             invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
         )

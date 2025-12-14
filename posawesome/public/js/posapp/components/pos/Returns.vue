@@ -11,7 +11,7 @@
           <v-row class="mb-4">
             <v-text-field
               color="primary"
-              :label="frappe._('Invoice ID')"
+              :label="frappe._('Invoice ID, Customer ID Or Mobile No')"
               background-color="white"
               hide-details
               v-model="invoice_name"
