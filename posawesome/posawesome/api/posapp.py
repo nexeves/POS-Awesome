@@ -1223,7 +1223,16 @@ def set_customer_info(customer, fieldname, value=""):
         frappe.set_value(
             "Customer", customer, "customer_primary_contact", contact_doc.name
         )
-        
+@frappe.whitelist()
+def search_available_qty(item_code, company):
+    data = []
+    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name')
+    for warehouse in warehouse_list:
+        qty = get_stock_availability(item_code, warehouse.name)
+        if qty > 0:
+            data.append ({ 'warehouse': warehouse.name, 'qty': qty})
+    return data
+     
 @frappe.whitelist()
 def search_invoices_for_return(invoice_name, company):
 
