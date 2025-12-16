@@ -1052,10 +1052,11 @@ def get_stock_availability(item_code, warehouse):
 
 @frappe.whitelist()
 def create_customer(
-    customer_id,
-    customer_name,
-    company,
-    pos_profile_doc,
+    customer_id=None,
+    custom_customer_id=None,  
+    customer_name=None,
+    company=None,
+    pos_profile_doc=None,
     tax_id=None,
     mobile_no=None,
     email_id=None,
@@ -1068,54 +1069,67 @@ def create_customer(
     method="create",
 ):
     pos_profile = json.loads(pos_profile_doc)
-    if method == "create":
-        is_exist = frappe.db.exists("Customer", {"customer_name": customer_name})
-        if pos_profile.get("posa_allow_duplicate_customer_names") or not is_exist:
-            customer = frappe.get_doc(
-                {
-                    "doctype": "Customer",
-                    "customer_name": customer_name,
-                    "posa_referral_company": company,
-                    "tax_id": tax_id,
-                    "mobile_no": mobile_no,
-                    "email_id": email_id,
-                    "posa_referral_code": referral_code,
-                    "posa_birthday": birthday,
-                    "customer_type": customer_type,
-                    "gender": gender,
-                }
-            )
-            if customer_group:
-                customer.customer_group = customer_group
-            else:
-                customer.customer_group = "All Customer Groups"
-            if territory:
-                customer.territory = territory
-            else:
-                customer.territory = "All Territories"
-            customer.save()
-            return customer
-        else:
-            frappe.throw(_("Customer already exists"))
 
+    if not customer_id:
+        customer_id = custom_customer_id
+
+    if not customer_id:
+        frappe.throw(_("Customer ID is required"))
+
+ 
+    if method == "create":
+
+        is_exist = frappe.db.exists(
+            "Customer",
+            {"custom_customer_id": customer_id}
+        )
+        if is_exist:
+            frappe.throw(_("Customer ID already exists"))
+
+        customer = frappe.get_doc({
+            "doctype": "Customer",
+            "customer_name": customer_name,
+            "custom_customer_id": customer_id, 
+            "posa_referral_company": company,
+            "tax_id": tax_id,
+            "mobile_no": mobile_no,
+            "email_id": email_id,
+            "posa_referral_code": referral_code,
+            "posa_birthday": birthday,
+            "customer_type": customer_type,
+            "gender": gender,
+        })
+
+        customer.customer_group = customer_group or "All Customer Groups"
+        customer.territory = territory or "All Territories"
+
+        customer.save(ignore_permissions=True)
+        return customer
+
+ 
     elif method == "update":
+
         customer_doc = frappe.get_doc("Customer", customer_id)
+
         customer_doc.customer_name = customer_name
+        customer_doc.custom_customer_id = customer_id   
         customer_doc.posa_referral_company = company
         customer_doc.tax_id = tax_id
         customer_doc.posa_referral_code = referral_code
         customer_doc.posa_birthday = birthday
         customer_doc.customer_type = customer_type
-        customer_doc.territory = territory
         customer_doc.customer_group = customer_group
+        customer_doc.territory = territory
         customer_doc.gender = gender
-        customer_doc.save()
+
+        customer_doc.save(ignore_permissions=True)
+
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
         if email_id != customer_doc.email_id:
             set_customer_info(customer_doc.name, "email_id", email_id)
-        return customer_doc
 
+        return customer_doc
 
 @frappe.whitelist()
 def get_items_from_barcode(selling_price_list, currency, barcode):
