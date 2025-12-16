@@ -793,7 +793,7 @@ export default {
       }
 
       if (
-        !this.pos_profile.posa_allow_partial_payment &&
+        // !this.pos_profile.posa_allow_partial_payment &&
         this.total_payments <
           (this.invoice_doc.rounded_total || this.invoice_doc.grand_total)
       ) {
@@ -1659,7 +1659,28 @@ export default {
     },
     is_write_off_change(value) {
       if (value == 1) {
-        this.invoice_doc.write_off_amount = this.diff_payment;
+        const limit = flt(this.pos_profile?.write_off_limit || 0);
+        const diff = flt(this.diff_payment);
+      
+        if (limit > 0 && diff > limit) {
+          evntBus.$emit("show_mesage", {
+            text: `Write Off limit exceeded. Max allowed is ${this.formtCurrency(
+              limit,
+              this.invoice_doc.currency,
+              0
+            )}`,
+            color: "error",
+          });
+        
+          this.$nextTick(() => {
+            this.is_write_off_change = 0;  
+
+
+          });
+          return;
+        }
+      
+        this.invoice_doc.write_off_amount = diff;
         this.invoice_doc.write_off_outstanding_amount_automatically = 1;
       } else {
         this.invoice_doc.write_off_amount = 0;
