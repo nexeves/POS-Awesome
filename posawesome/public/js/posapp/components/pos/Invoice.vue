@@ -1655,9 +1655,14 @@ export default {
             value = false;
           }
         }
+
         if (this.pos_profile.posa_allow_user_to_edit_additional_discount) {
-          const clac_percentage = (this.discount_amount / this.Total) * 100;
-          if (clac_percentage > this.pos_profile.posa_max_discount_allowed) {
+          const calc_percentage = (this.discount_amount / this.Total) * 100;
+
+          if (
+            this.pos_profile.posa_max_discount_allowed &&
+            calc_percentage > this.pos_profile.posa_max_discount_allowed
+          ) {
             evntBus.$emit("show_mesage", {
               text: __(`The discount should not be higher than {0}%`, [
                 this.pos_profile.posa_max_discount_allowed,
@@ -1666,7 +1671,22 @@ export default {
             });
             value = false;
           }
+        
+          //  STAFF discount validation (NEW)
+          if (
+            this.pos_profile.custom_staff_discount_ &&
+            calc_percentage > this.pos_profile.custom_staff_discount_
+          ) {
+            evntBus.$emit("show_mesage", {
+              text: __(`Staff discount cannot exceed {0}%`, [
+                this.pos_profile.custom_staff_discount_,
+              ]),
+              color: "error",
+            });
+            value = false;
+          }
         }
+
         if (this.invoice_doc.is_return) {
           if (this.subtotal >= 0) {
             evntBus.$emit("show_mesage", {
@@ -1944,9 +1964,31 @@ export default {
       evntBus.$emit("update_customer_price_list", price_list);
     },
     update_discount_umount() {
-      const value = flt(this.additional_discount_percentage);
-      if (value >= -100 && value <= 100) {
-        this.discount_amount = (this.Total * value) / 100;
+      const entered = flt(this.additional_discount_percentage || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      // Exceeds staff discount
+      if (max_allowed > 0 && entered > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+      
+        // reset values
+        this.$nextTick(() => {
+          this.additional_discount_percentage = 0;
+          this.discount_amount = 0;
+        });
+      
+        return;
+      }
+    
+      // ✅ valid discount
+      if (entered >= 0 && entered <= 100) {
+        this.discount_amount = this.flt(
+          (this.Total * entered) / 100,
+          this.currency_precision
+        );
       } else {
         this.additional_discount_percentage = 0;
         this.discount_amount = 0;
