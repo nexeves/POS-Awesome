@@ -18,6 +18,17 @@
           <v-container>
             <v-row>
               <v-col cols="12">
+              <v-text-field
+                dense
+                color="primary"
+                :label="frappe._('Customer ID')"
+                background-color="white"
+                hide-details
+                v-model="custom_customer_id"
+              ></v-text-field>
+            </v-col>
+            
+              <v-col cols="12">
                 <v-text-field
                   dense
                   color="primary"
@@ -181,6 +192,7 @@ export default {
     customerDialog: false,
     pos_profile: '',
     customer_id: '',
+    custom_customer_id:'',
     customer_name: '',
     tax_id: '',
     mobile_no: '',
@@ -214,6 +226,7 @@ export default {
       this.group = frappe.defaults.get_user_default('Customer Group');
       this.territory = frappe.defaults.get_user_default('Territory');
       this.customer_id = '';
+      this.custom_customer_id = ''; 
       this.customer_type = 'Individual';
       this.gender = '';
       this.loyalty_points = null;
@@ -296,7 +309,8 @@ export default {
       if (this.customer_name) {
         const vm = this;
         const args = {
-          customer_id: this.customer_id,
+          customer_id: this.customer_id || this.custom_customer_id,
+          custom_customer_id: this.custom_customer_id,
           customer_name: this.customer_name,
           company: this.pos_profile.company,
           tax_id: this.tax_id,
@@ -348,7 +362,7 @@ export default {
       this.customerDialog = true;
       if (data) {
         this.customer_name = data.customer_name;
-        this.customer_id = data.name;
+        this.custom_customer_id = data.custom_customer_id;
         this.tax_id = data.tax_id;
         this.mobile_no = data.mobile_no;
         this.email_id = data.email_id;
