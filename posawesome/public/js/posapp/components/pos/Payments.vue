@@ -792,13 +792,15 @@ export default {
         }
       }
 
-      if (
-        // !this.pos_profile.posa_allow_partial_payment &&
-        this.total_payments <
-          (this.invoice_doc.rounded_total || this.invoice_doc.grand_total)
-      ) {
+      const invoice_total =
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+
+      const write_off = flt(this.invoice_doc.write_off_amount || 0);
+      const paid_amount = flt(this.total_payments);
+
+      if (paid_amount + write_off < invoice_total) {
         evntBus.$emit("show_mesage", {
-          text: `The amount paid is not complete`,
+          text: __("The amount paid is not complete"),
           color: "error",
         });
         frappe.utils.play_sound("error");

@@ -85,6 +85,12 @@ export default {
         sortable: true,
       },
       {
+        text: __('Name'),
+        value: 'customer_name',
+        sortable: true,
+      },
+
+      {
         text: __('Date'),
         align: 'start',
         sortable: true,

@@ -1270,6 +1270,7 @@ def search_invoices_for_return(invoice_name, company):
         or_filters=[
             ["customer_name", "like", f"%{query}%"],
             ["mobile_no", "like", f"%{query}%"],
+            ["custom_customer_id", "like", f"%{query}%"],
         ],
         pluck="name"
     )
