@@ -21,10 +21,12 @@
               <v-text-field
                 dense
                 color="primary"
-                :label="frappe._('Customer ID')"
+                :label="frappe._('Customer ID') + ' *'"
                 background-color="white"
                 hide-details
                 v-model="custom_customer_id"
+                required
+
               ></v-text-field>
             </v-col>
             
@@ -362,7 +364,8 @@ export default {
       this.customerDialog = true;
       if (data) {
         this.customer_name = data.customer_name;
-        this.custom_customer_id = data.custom_customer_id;
+        this.customer_id = data.name;                
+        this.custom_customer_id = data.name;
         this.tax_id = data.tax_id;
         this.mobile_no = data.mobile_no;
         this.email_id = data.email_id;
