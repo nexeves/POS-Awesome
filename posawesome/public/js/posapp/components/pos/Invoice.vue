@@ -687,20 +687,22 @@
               ></v-text-field>
             </v-col>
             <v-col
-              v-if="!pos_profile.posa_use_percentage_discount"
               cols="6"
               class="pa-1"
             >
               <v-text-field
                 :value="formtCurrency(discount_amount)"
                 @change="
-                  setFormatedCurrency(
-                    discount_amount,
-                    'discount_amount',
-                    null,
-                    false,
-                    $event
-                  )
+                  [
+                    setFormatedCurrency(
+                      discount_amount,
+                      'discount_amount',
+                      null,
+                      false,
+                      $event
+                    ),
+                    update_discount_amount_validation()
+                  ]
                 "
                 :rules="[isNumber]"
                 :label="frappe._('Additional Discount')"
@@ -719,7 +721,6 @@
               ></v-text-field>
             </v-col>
             <v-col
-              v-if="pos_profile.posa_use_percentage_discount"
               cols="6"
               class="pa-1"
             >
@@ -1994,6 +1995,34 @@ export default {
         this.discount_amount = 0;
       }
     },
+    update_discount_amount_validation() {
+      const total = flt(this.Total || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      if (!total) return;
+    
+      // convert amount → percentage
+      const calc_percentage = this.flt(
+        (flt(this.discount_amount) / total) * 100,
+        this.float_precision
+      );
+    
+      if (max_allowed > 0 && calc_percentage > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+    
+        this.$nextTick(() => {
+          this.discount_amount = 0;
+          this.additional_discount_percentage = 0;
+        });
+        return;
+      }
+    
+      this.additional_discount_percentage = calc_percentage;
+    },
+
 
     calc_prices(item, value, $event) {
       if (event.target.id === "rate") {

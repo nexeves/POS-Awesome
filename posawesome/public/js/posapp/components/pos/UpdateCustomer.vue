@@ -30,7 +30,7 @@
               ></v-text-field>
             </v-col>
             
-              <v-col cols="12">
+              <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -152,6 +152,16 @@
                 >
                 </v-autocomplete>
               </v-col>
+                            <v-col cols="6">
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Location')"
+                  background-color="white"
+                  hide-details
+                  v-model="custom_location"
+                ></v-text-field>
+              </v-col>
               <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
                   v-model="loyalty_program"
@@ -211,6 +221,7 @@ export default {
     gender: '',
     loyalty_points: null,
     loyalty_program: null,
+    custom_location: '',
   }),
   watch: {},
   methods: {
@@ -233,6 +244,7 @@ export default {
       this.gender = '';
       this.loyalty_points = null;
       this.loyalty_program = null;
+      this.custom_location ='';
     },
     getCustomerGroups() {
       if (this.groups.length > 0) return;
@@ -294,6 +306,14 @@ export default {
         });
         return;
       }
+      if (!this.custom_customer_id) {
+        evntBus.$emit('show_mesage', {
+          text: __('Customer ID is required.'),
+          color: 'error',
+        });
+        return;
+      }
+
       if (!this.group) {
         evntBus.$emit('show_mesage', {
           text: __('Customer group is required.'),
@@ -326,6 +346,7 @@ export default {
           gender: this.gender,
           method: this.customer_id ? 'update' : 'create',
           pos_profile_doc: this.pos_profile,
+          custom_location: this.custom_location,
         };
         frappe.call({
           method: 'posawesome.posawesome.api.posapp.create_customer',
@@ -376,6 +397,8 @@ export default {
         this.loyalty_points = data.loyalty_points;
         this.loyalty_program = data.loyalty_program;
         this.gender = data.gender;
+        this.custom_location = data.custom_location;
+
       }
     });
     evntBus.$on('register_pos_profile', (data) => {
