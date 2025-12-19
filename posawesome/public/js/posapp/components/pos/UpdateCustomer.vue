@@ -40,7 +40,7 @@
                   v-model="customer_name"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -49,7 +49,7 @@
                   hide-details
                   v-model="tax_id"
                 ></v-text-field>
-              </v-col>
+              </v-col> -->
               <v-col cols="6">
                 <v-text-field
                   dense
@@ -60,7 +60,7 @@
                   v-model="mobile_no"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -69,7 +69,7 @@
                   hide-details
                   v-model="email_id"
                 ></v-text-field>
-              </v-col>
+              </v-col> -->
               <v-col cols="6">
                 <v-select
                   dense
@@ -206,9 +206,9 @@ export default {
     customer_id: '',
     custom_customer_id:'',
     customer_name: '',
-    tax_id: '',
+    // tax_id: '',
     mobile_no: '',
-    email_id: '',
+    // email_id: '',
     referral_code: '',
     birthday: null,
     birthday_menu: false,
@@ -231,9 +231,9 @@ export default {
     },
     clear_customer() {
       this.customer_name = '';
-      this.tax_id = '';
+      // this.tax_id = '';
       this.mobile_no = '';
-      this.email_id = '';
+      // this.email_id = '';
       this.referral_code = '';
       this.birthday = '';
       this.group = frappe.defaults.get_user_default('Customer Group');
@@ -335,9 +335,9 @@ export default {
           custom_customer_id: this.custom_customer_id,
           customer_name: this.customer_name,
           company: this.pos_profile.company,
-          tax_id: this.tax_id,
+          // tax_id: this.tax_id,
           mobile_no: this.mobile_no,
-          email_id: this.email_id,
+          // email_id: this.email_id,
           referral_code: this.referral_code,
           birthday: this.birthday,
           customer_group: this.group,
@@ -387,9 +387,9 @@ export default {
         this.customer_name = data.customer_name;
         this.customer_id = data.name;                
         this.custom_customer_id = data.name;
-        this.tax_id = data.tax_id;
+        // this.tax_id = data.tax_id;
         this.mobile_no = data.mobile_no;
-        this.email_id = data.email_id;
+        // this.email_id = data.email_id;
         this.referral_code = data.referral_code;
         this.birthday = data.birthday;
         this.group = data.customer_group;

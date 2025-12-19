@@ -910,11 +910,12 @@ export default {
       posting_date: frappe.datetime.nowdate(),
       items_headers: [
         {
-          text: __("Name"),
+          text: __("Item Code"),
           align: "start",
           sortable: true,
-          value: "item_name",
+          value: "item_code",
         },
+        {text:__("Name"),value:"item_name",align:"center"},
         { text: __("QTY"), value: "qty", align: "center" },
         { text: __("UOM"), value: "uom", align: "center" },
         { text: __("Rate"), value: "rate", align: "center" },
