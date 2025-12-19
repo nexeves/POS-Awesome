@@ -1066,6 +1066,9 @@ def create_customer(
     territory=None,
     customer_type=None,
     gender=None,
+    custom_location=None,
+
+    
     method="create",
 ):
     pos_profile = json.loads(pos_profile_doc)
@@ -1098,6 +1101,7 @@ def create_customer(
             "posa_birthday": birthday,
             "customer_type": customer_type,
             "gender": gender,
+            "custom_location": custom_location,
         })
 
         customer.customer_group = customer_group or "All Customer Groups"
@@ -1121,6 +1125,8 @@ def create_customer(
         customer_doc.customer_group = customer_group
         customer_doc.territory = territory
         customer_doc.gender = gender
+        customer_doc.custom_location = custom_location
+
 
         customer_doc.save(ignore_permissions=True)
 
@@ -1761,6 +1767,7 @@ def get_customer_info(customer):
     res["posa_discount"] = customer.posa_discount
     res["name"] = customer.name
     res["customer_name"] = customer.customer_name
+    res["custom_location"]=customer.custom_location
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
