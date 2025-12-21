@@ -998,11 +998,22 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None):
     today = nowdate()
     item_code = item.get("item_code")
     batch_no_data = []
+
+    # ✅ Detect return
+    is_return = False
+    if doc:
+        try:
+            doc = json.loads(doc) if isinstance(doc, str) else doc
+            is_return = bool(doc.get("is_return"))
+        except Exception:
+            pass
+
     if warehouse and item.get("has_batch_no"):
         batch_list = get_batch_qty(warehouse=warehouse, item_code=item_code)
         if batch_list:
             for batch in batch_list:
-                if batch.qty > 0 and batch.batch_no:
+                # ✅ Allow empty batch for return
+                if batch.batch_no and (is_return or batch.qty > 0):
                     batch_doc = frappe.get_cached_doc("Batch", batch.batch_no)
                     if (
                         str(batch_doc.expiry_date) > str(today)
@@ -1011,7 +1022,7 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None):
                         batch_no_data.append(
                             {
                                 "batch_no": batch.batch_no,
-                                "batch_qty": batch.qty,
+                                "batch_qty": batch.qty,  # may be 0 for return
                                 "expiry_date": batch_doc.expiry_date,
                                 "batch_price": batch_doc.posa_batch_price,
                                 "manufacturing_date": batch_doc.manufacturing_date,
@@ -1026,8 +1037,10 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None):
         doc,
         overwrite_warehouse=False,
     )
+
     if item.get("is_stock_item") and warehouse:
         res["actual_qty"] = get_stock_availability(item_code, warehouse)
+
     res["max_discount"] = max_discount
     res["batch_no_data"] = batch_no_data
     return res
@@ -1370,7 +1383,9 @@ def get_offers(profile):
         "valid_from": date,
         "valid_upto": date,
     }
-    data = frappe.db.sql(
+    
+    # Get parent offer data
+    offers_data = frappe.db.sql(
         """
         SELECT *
         FROM `tabPOS Offer`
@@ -1381,12 +1396,19 @@ def get_offers(profile):
         (warehouse is NULL OR warehouse  = '' OR  warehouse = %(warehouse)s) AND
         (valid_from is NULL OR valid_from  = '' OR  valid_from <= %(valid_from)s) AND
         (valid_upto is NULL OR valid_from  = '' OR  valid_upto >= %(valid_upto)s)
-    """,
+        """,
         values=values,
         as_dict=1,
     )
-    return data
-
+    
+    # Load each offer as a full document to include child tables
+    offers_with_children = []
+    for offer_row in offers_data:
+        offer_doc = frappe.get_doc("POS Offer", offer_row.name)
+        offer_dict = offer_doc.as_dict()
+        offers_with_children.append(offer_dict)
+    
+    return offers_with_children
 
 @frappe.whitelist()
 def get_customer_addresses(customer):
