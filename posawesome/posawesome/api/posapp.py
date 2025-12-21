@@ -1370,7 +1370,9 @@ def get_offers(profile):
         "valid_from": date,
         "valid_upto": date,
     }
-    data = frappe.db.sql(
+    
+    # Get parent offer data
+    offers_data = frappe.db.sql(
         """
         SELECT *
         FROM `tabPOS Offer`
@@ -1381,11 +1383,19 @@ def get_offers(profile):
         (warehouse is NULL OR warehouse  = '' OR  warehouse = %(warehouse)s) AND
         (valid_from is NULL OR valid_from  = '' OR  valid_from <= %(valid_from)s) AND
         (valid_upto is NULL OR valid_from  = '' OR  valid_upto >= %(valid_upto)s)
-    """,
+        """,
         values=values,
         as_dict=1,
     )
-    return data
+    
+    # Load each offer as a full document to include child tables
+    offers_with_children = []
+    for offer_row in offers_data:
+        offer_doc = frappe.get_doc("POS Offer", offer_row.name)
+        offer_dict = offer_doc.as_dict()
+        offers_with_children.append(offer_dict)
+    
+    return offers_with_children
 
 
 @frappe.whitelist()
