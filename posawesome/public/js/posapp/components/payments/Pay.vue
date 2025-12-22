@@ -162,7 +162,6 @@
 import Customer from "../pos/Customer.vue";
 import { evntBus } from "../../bus";
 import format from "../../format";
-
 export default {
   mixins: [format],
   components: { Customer },
@@ -334,7 +333,6 @@ export default {
   },
 };
 </script>
-
 <style>
 .label {
   font-size: 13px;

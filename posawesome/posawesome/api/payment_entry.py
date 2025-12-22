@@ -503,7 +503,78 @@ def get_sales_order_details(sales_order_id):
         "amount_excl_vat": item_total,
         "vat_amount": vat_amount,
         "grand_total": item_total + vat_amount,
-        "status": so.status,
+        "status": so.status
+def get_invoices(company, currency, customer=None, pos_profile_name=None):
+    filters = {
+        "company": company,
+        "docstatus": 1,
+        "is_return": 0,
+        "currency": currency,
+    }
+
+    if customer:
+        filters["customer"] = customer
+    if pos_profile_name:
+        filters["pos_profile"] = pos_profile_name
+
+    invoices = frappe.get_all(
+        "Sales Invoice",
+        filters=filters,
+    fields=[
+        "name",
+        "customer",
+        "customer_name",
+        "outstanding_amount",
+        "grand_total",
+        "due_date",
+        "posting_date",
+        "posting_time",
+        "currency",
+        "pos_profile",
+    ],
+    order_by="posting_date desc, posting_time desc",
+)
+
+
+    for inv in invoices:
+        sales_person = frappe.db.get_value(
+            "Sales Team",
+            {"parenttype": "Sales Invoice", "parent": inv.name},
+            "sales_person",
+        )
+        inv["sales_person"] = sales_person or ""
+
+    return invoices
+
+
+@frappe.whitelist()
+def get_invoice_details(invoice_id):
+    invoice = frappe.get_doc("Sales Invoice", invoice_id)
+    mobile_no = frappe.db.get_value("Customer", invoice.customer, "mobile_no") or ""
+    sales_person = invoice.sales_team[0].sales_person if invoice.sales_team else ""
+    amount_before_discount = sum(item.rate * item.qty for item in invoice.items)
+    item_total = sum(item.amount for item in invoice.items)
+    total_discount = amount_before_discount - item_total
+
+    vat_amount = 0
+    for tax in invoice.taxes:
+        if "VAT" in (tax.account_head or tax.description or "").upper():
+            vat_amount += tax.tax_amount
+    amount_excl_vat = invoice.grand_total - vat_amount
+
+    return {
+        "name": invoice.name,
+        "customer": invoice.customer,
+        "customer_name": invoice.customer_name,
+        "mobile_no": mobile_no,
+        "posting_date": invoice.posting_date,
+        "currency": invoice.currency,
+        "sales_person": sales_person,
+        "amount_before_discount": amount_before_discount,
+        "total_discount": total_discount,
+        "amount_excl_vat": amount_excl_vat,
+        "vat_amount": vat_amount,
+        "grand_total": invoice.grand_total,
         "items": [
             {
                 "item_code": i.item_code,
@@ -512,6 +583,7 @@ def get_sales_order_details(sales_order_id):
                 "rate": i.rate,
                 "amount": i.amount,
             }
+
             for i in so.items
         ],
     }
@@ -580,3 +652,8 @@ def make_si_from_so_with_advances(sales_order, pos_profile=None):
     return {
         "sales_invoice": si.name
     }
+
+            for i in invoice.items
+        ],
+    }
+
