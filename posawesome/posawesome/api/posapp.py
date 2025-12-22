@@ -208,6 +208,7 @@ def get_items(
                 disabled = 0
                     AND is_sales_item = 1
                     AND is_fixed_asset = 0
+                    AND custom_pos_item = 1
                     {condition}
             ORDER BY
                 item_name asc
@@ -420,12 +421,13 @@ def get_customer_names(pos_profile):
     def _get_customer_names(pos_profile):
         pos_profile = json.loads(pos_profile)
         condition = ""
+        # condition = "custom_customer_category = 'POS'"
         condition += get_customer_group_condition(pos_profile)
         customers = frappe.db.sql(
             """
             SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
             FROM `tabCustomer`
-            WHERE {0}
+            WHERE disabled = 0
             ORDER by name
             """.format(
                 condition
@@ -1049,7 +1051,10 @@ def create_customer(
     territory=None,
     customer_type=None,
     gender=None,
+    custom_invoice_name=None,
+    custom_vat_no=None,
     method="create",
+    payment_term=None
 ):
     pos_profile = json.loads(pos_profile_doc)
     if method == "create":
@@ -1067,6 +1072,10 @@ def create_customer(
                     "posa_birthday": birthday,
                     "customer_type": customer_type,
                     "gender": gender,
+                    # "custom_customer_category": "POS",
+                    "default_price_list": "Standard Selling",
+                    "custom_invoice_name": custom_invoice_name,
+                    "custom_vat_no":custom_vat_no,
                 }
             )
             if customer_group:
@@ -1077,6 +1086,14 @@ def create_customer(
                 customer.territory = territory
             else:
                 customer.territory = "All Territories"
+            if payment_term:
+                customer.payment_terms = payment_term
+
+                
+            # customer.append("accounts", {
+            #         "company": company,
+            #         "account": "Debtors - MM"
+            #     })
             customer.save()
             return customer
         else:
@@ -1093,6 +1110,10 @@ def create_customer(
         customer_doc.territory = territory
         customer_doc.customer_group = customer_group
         customer_doc.gender = gender
+        customer_doc.custom_invoice_name = custom_invoice_name  
+        customer_doc.custom_vat_no = custom_vat_no
+        if payment_term:
+            customer_doc.payment_terms = payment_term
         customer_doc.save()
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
@@ -1699,6 +1720,7 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+    # res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
@@ -1742,6 +1764,7 @@ def auto_create_items():
                 "is_sales_item": 1,
                 "is_purchase_item": 0,
                 "is_fixed_asset": 0,
+                "custom_pos_item" : 1,
                 "is_sub_contracted_item": 0,
                 "is_pro_applicable": 0,
                 "is_manufactured_item": 0,
@@ -1815,3 +1838,275 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+@frappe.whitelist()
+def create_draft_sales_order_from_cart(
+    customer,
+    company,
+    items,
+    delivery_date=None,
+    pos_opening_shift=None,
+    discount_amount=0,
+    additional_discount_percentage=0,
+    taxes=None,
+    pos_profile=None,
+    warehouse=None,
+):
+    import json
+    from frappe.utils import flt
+
+    # ---------------------- Parse Incoming Data ----------------------
+    items_list = json.loads(items) if isinstance(items, str) else (items or [])
+
+    if isinstance(taxes, str) and taxes:
+        try:
+            taxes_list = json.loads(taxes)
+        except Exception:
+            taxes_list = []
+    else:
+        taxes_list = taxes or []
+
+    # Determine POS Profile from POS Opening Shift
+    if pos_opening_shift:
+        pos_profile = frappe.db.get_value("POS Opening Shift", pos_opening_shift, "pos_profile")
+
+    # ---------------------- Create Sales Order ----------------------
+    so = frappe.new_doc("Sales Order")
+    so.update({
+        "customer": customer,
+        "company": company,
+        "is_pos": 1,
+        "pos_opening_shift": pos_opening_shift or None,
+        "posa_pos_opening_shift": pos_opening_shift or None,
+        "custom_pos_opening_shift": pos_opening_shift or None,
+        "pos_profile": pos_profile or None,
+        "custom_pos_profile": pos_profile or None,
+        "discount_amount": flt(discount_amount),
+        "additional_discount_percentage": flt(additional_discount_percentage),
+    })
+
+    # ---------------------- Add Items ----------------------
+    for it in items_list:
+        so.append("items", {
+            "item_code": it.get("item_code"),
+            "qty": flt(it.get("qty", 0)),
+            "rate": flt(it.get("rate", 0)),
+            "uom": it.get("uom"),
+            "warehouse": it.get("warehouse") or warehouse,
+            "discount_percentage": flt(it.get("discount_percentage", 0)),
+            "discount_amount": flt(it.get("discount_amount", 0)),
+            "item_tax_template": it.get("item_tax_template"),
+            "delivery_date": it.get("posa_delivery_date") or delivery_date or None,
+        })
+
+    so.set_missing_values()
+
+    taxes_and_charges = frappe.get_value(
+        "POS Profile", pos_profile, "taxes_and_charges"
+    )
+
+    if taxes_and_charges:
+        so.taxes_and_charges = taxes_and_charges
+    so.set_missing_values()
+    so.calculate_taxes_and_totals()
+
+    so.flags.ignore_permissions = True
+    frappe.flags.ignore_account_permission = True
+    so.save()
+
+    return so.name
+@frappe.whitelist()
+def get_invoice_doc_from_sales_order(sales_order):
+    so = frappe.get_doc("Sales Order", sales_order)
+
+    net_total = flt(so.net_total)
+    tax_total = flt(so.total_taxes_and_charges)
+    grand_total = flt(so.grand_total)
+
+    pos_profile = getattr(so, "custom_pos_profile", None)
+
+    invoice_like = {
+        "doctype": "Sales Invoice",
+        "name": so.name,
+        "company": so.company,
+        "customer": so.customer,
+        "currency": so.currency or frappe.get_cached_value("Company", so.company, "default_currency"),
+        "net_total": net_total,
+        "subtotal": net_total,
+        "subtotal_for_pos": net_total,
+        "discount_amount": flt(so.discount_amount),
+        "additional_discount_percentage": flt(so.additional_discount_percentage),
+        "total_taxes_and_charges": tax_total,
+        "grand_total": grand_total,
+        "total_qty": sum([flt(i.qty) for i in so.items]),
+        "pos_profile": pos_profile,
+        "paid_amount": 0,
+        "change_amount": 0,
+        "is_return": 0,
+        "loyalty_amount": 0,
+        "redeem_loyalty_points": 0,
+        "loyalty_points": 0,
+        "posa_delivery_charges_rate": 0,
+        "delivery_charges": 0,
+        "taxes": [],
+        "items": [],
+        "payments": []
+    }
+
+    if pos_profile:
+        payment_methods = frappe.get_all(
+            "POS Payment Method",
+            filters={"parent": pos_profile},
+            fields=["mode_of_payment", "default", "allow_in_returns"],
+            order_by="idx"
+        )
+
+        idx = 1
+        for pm in payment_methods:
+            mop_type = frappe.db.get_value(
+                "Mode of Payment",
+                pm.mode_of_payment,
+                "type"
+            )
+
+            mop_account = frappe.db.get_value(
+                "Mode of Payment Account",
+                {"parent": pm.mode_of_payment, "company": so.company},
+                "default_account"
+            )
+
+            invoice_like["payments"].append({
+                "mode_of_payment": pm.mode_of_payment,
+                "type": mop_type or "",
+                "amount": 0,
+                "base_amount": 0,
+                "default": pm.default,
+                "allow_in_return": pm.allow_in_return,
+                "account": mop_account or "",
+                "idx": idx
+            })
+            idx += 1
+
+    for tx in so.taxes:
+        invoice_like["taxes"].append({
+            "charge_type": tx.charge_type,
+            "account_head": tx.account_head,
+            "description": tx.description,
+            "rate": flt(tx.rate),
+            "tax_amount": flt(tx.tax_amount),
+            "total": flt(tx.total),
+        })
+
+    for it in so.items:
+        invoice_like["items"].append({
+            "name": it.name,
+            "item_code": it.item_code,
+            "qty": flt(it.qty),
+            "rate": flt(it.rate),
+            "amount": flt(it.amount),
+            "net_amount": flt(it.net_amount),
+            "discount_percentage": flt(it.discount_percentage),
+            "discount_amount": flt(it.discount_amount),
+            "item_tax_template": it.item_tax_template or "",
+        })
+
+    return invoice_like
+
+
+@frappe.whitelist()
+def submit_sales_order_with_payment(sales_order, data):
+    data = json.loads(data) if isinstance(data, str) else data
+    so = frappe.get_doc("Sales Order", sales_order)
+
+    delivery_date = data.get("delivery_date") or so.delivery_date
+
+    so.discount_amount = flt(data.get("discount_amount", so.discount_amount))
+    so.additional_discount_percentage = flt(
+        data.get("additional_discount_percentage", so.additional_discount_percentage)
+    )
+
+    so.delivery_date = delivery_date
+    for row in so.items:
+        row.delivery_date = delivery_date
+
+    so.calculate_taxes_and_totals()
+
+    if data.get("sales_person"):
+        so.set("sales_team", [])
+        so.append("sales_team", {
+            "sales_person": data.get("sales_person"),
+            "allocated_percentage": 100
+        })
+
+    so.flags.ignore_permissions = True
+    frappe.flags.ignore_account_permission = True
+
+    so.save()
+    so.submit()
+
+    payments = data.get("payments", [])
+
+    for row in payments:
+        mop = row.get("mode_of_payment")
+        amount = flt(row.get("amount"))
+
+        if not mop or amount <= 0:
+            continue
+
+        mop_account = frappe.db.get_value(
+            "Mode of Payment Account",
+            {"parent": mop, "company": so.company},
+            "default_account"
+        )
+
+        company_currency = frappe.db.get_value("Company", so.company, "default_currency")
+        account_type = frappe.db.get_value("Account", mop_account, "account_type")
+
+        pe = frappe.new_doc("Payment Entry")
+        pe.payment_type = "Receive"
+        pe.party_type = "Customer"
+        pe.party = so.customer
+        pe.company = so.company
+        pe.posting_date = frappe.utils.nowdate()
+        pe.mode_of_payment = mop
+        pe.paid_amount = amount
+        pe.received_amount = amount
+        pe.paid_to = mop_account
+        pe.paid_to_account_currency = company_currency
+
+        if account_type == "Bank":
+            pe.reference_no = so.name
+            pe.reference_date = frappe.utils.nowdate()
+
+        pe.append("references", {
+            "reference_doctype": "Sales Order",
+            "reference_name": so.name,
+            "allocated_amount": amount
+        })
+
+        pe.flags.ignore_permissions = True
+        frappe.flags.ignore_account_permission = True
+        pe.insert()
+        pe.submit()
+
+    return {
+        "name": so.name,
+        "docstatus": so.docstatus,
+        "delivery_date": so.delivery_date,
+        "grand_total": so.grand_total,
+    }
+
+def _add_unique_tax_row(doc, new_tax_row):
+    """Adds a tax row to doc.taxes if it doesn't already exist (based on account_head/description)."""
+    is_duplicate = False
+    for existing_tax in doc.taxes:
+        if new_tax_row.get("charge_type") == "Actual":
+            if existing_tax.get("description") == new_tax_row.get("description"):
+                is_duplicate = True
+                break
+        else: # For 'On Net Total', 'On Previous Row Total / Amount'
+            if existing_tax.get("account_head") == new_tax_row.get("account_head"):
+                is_duplicate = True
+                break
+    if not is_duplicate:
+        doc.append("taxes", new_tax_row)
+        

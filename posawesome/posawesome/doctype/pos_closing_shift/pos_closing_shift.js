@@ -30,6 +30,7 @@ frappe.ui.form.on('POS Closing Shift', {
 			frappe.run_serially([
 				() => frm.trigger("set_opening_amounts"),
 				() => frm.trigger("get_pos_invoices"),
+				() => frm.trigger("get_pos_sales_orders"),
 				() => frm.trigger("get_pos_payments")
 			]);
 		}
@@ -57,6 +58,20 @@ frappe.ui.form.on('POS Closing Shift', {
 			callback: (r) => {
 				let pos_docs = r.message;
 				set_form_data(pos_docs, frm);
+				refresh_fields(frm);
+				set_html_data(frm);
+			}
+		});
+	},
+	get_pos_sales_orders(frm) {
+		frappe.call({
+			method: 'posawesome.posawesome.doctype.pos_closing_shift.pos_closing_shift.get_pos_sales_orders',
+			args: {
+				pos_opening_shift: frm.doc.pos_opening_shift,
+			},
+			callback: (r) => {
+				let so_docs = r.message;
+				set_form_sales_order_data(so_docs, frm);
 				refresh_fields(frm);
 				set_html_data(frm);
 			}
@@ -176,10 +191,56 @@ function add_to_taxes (d, frm) {
 	});
 }
 
+function set_form_sales_order_data(data, frm) {
+	data.forEach(d => {
+		add_to_sales_order_payments(d, frm);
+
+		add_so_taxes_to_taxes(d, frm);
+	});
+}
+
+function add_to_sales_order_payments(d, frm) {
+	frm.add_child("custom_sales_order_payments", {
+		sales_order: d.name,
+		date: d.transaction_date,
+		customer: d.customer,
+		amount: d.advance_paid
+	});
+}
+
+function add_so_taxes_to_taxes(so_data, frm) {
+	frappe.call({
+		method: 'frappe.client.get',
+		args: {
+			doctype: 'Sales Order',
+			name: so_data.name,
+			fields: ['taxes']
+		},
+		async: false,
+		callback: (r) => {
+			if (r.message && r.message.taxes) {
+				r.message.taxes.forEach(t => {
+					const tax = frm.doc.taxes.find(tx => tx.account_head === t.account_head && tx.rate === t.rate);
+					if (tax) {
+						tax.amount += flt(t.tax_amount);
+					} else {
+						frm.add_child("taxes", {
+							account_head: t.account_head,
+							rate: t.rate,
+							amount: t.tax_amount
+						});
+					}
+				});
+			}
+		}
+	});
+}
+
 function reset_values (frm) {
 	frm.set_value("pos_transactions", []);
 	frm.set_value("payment_reconciliation", []);
 	frm.set_value("pos_payments", []);
+	frm.set_value("custom_sales_order_payments", []);   
 	frm.set_value("taxes", []);
 	frm.set_value("grand_total", 0);
 	frm.set_value("net_total", 0);
@@ -190,6 +251,7 @@ function refresh_fields (frm) {
 	frm.refresh_field("pos_transactions");
 	frm.refresh_field("payment_reconciliation");
 	frm.refresh_field("pos_payments");
+	frm.refresh_field("custom_sales_order_payments");  
 	frm.refresh_field("taxes");
 	frm.refresh_field("grand_total");
 	frm.refresh_field("net_total");

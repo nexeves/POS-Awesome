@@ -427,3 +427,156 @@ def get_available_pos_profiles(company, currency):
         pluck="name",
     )
     return pos_profiles_list
+@frappe.whitelist()
+def get_sales_orders(
+    company,
+    currency,
+    pos_profile_name=None,
+    customer=None,
+):
+    filters = {
+        "company": company,
+        "docstatus": 1,              # Submitted
+        "currency": currency,
+        "per_delivered": ["<", 100], # Not fully delivered
+    }
+
+    if pos_profile_name:
+        filters["custom_pos_profile"] = pos_profile_name
+
+    if customer:
+        filters["customer"] = customer
+
+    sales_orders = frappe.get_all(
+        "Sales Order",
+        filters=filters,
+        fields=[
+            "name",
+            "customer",
+            "customer_name",
+            "grand_total",
+            "transaction_date as posting_date",
+            "currency",
+            "status",
+            "per_delivered",
+            "custom_pos_profile",
+        ],
+        order_by="transaction_date desc",
+    )
+
+    for so in sales_orders:
+        sales_person = frappe.db.get_value(
+            "Sales Team",
+            {"parenttype": "Sales Order", "parent": so.name},
+            "sales_person",
+        )
+        so["sales_person"] = sales_person or ""
+
+    return sales_orders
+@frappe.whitelist()
+def get_sales_order_details(sales_order_id):
+    so = frappe.get_doc("Sales Order", sales_order_id)
+
+    mobile_no = frappe.db.get_value("Customer", so.customer, "mobile_no") or ""
+    sales_person = so.sales_team[0].sales_person if so.sales_team else ""
+
+    amount_before_discount = sum(item.rate * item.qty for item in so.items)
+    item_total = sum(item.amount for item in so.items)
+
+    # ✅ VAT CALCULATION (FIXED)
+    vat_amount = 0
+    for tax in so.taxes:
+        if "VAT" in (tax.account_head or "").upper():
+            vat_amount += tax.tax_amount
+
+    return {
+        "name": so.name,
+        "customer": so.customer,
+        "customer_name": so.customer_name,
+        "mobile_no": mobile_no,
+        "posting_date": so.transaction_date,
+        "delivery_date": so.delivery_date,  # ✅ ADDED
+        "currency": so.currency,
+        "sales_person": sales_person,
+        "amount_before_discount": amount_before_discount,
+        "total_discount": amount_before_discount - item_total,
+        "amount_excl_vat": item_total,
+        "vat_amount": vat_amount,
+        "grand_total": item_total + vat_amount,
+        "status": so.status,
+        "items": [
+            {
+                "item_code": i.item_code,
+                "item_name": i.item_name,
+                "qty": i.qty,
+                "rate": i.rate,
+                "amount": i.amount,
+            }
+            for i in so.items
+        ],
+    }
+@frappe.whitelist()
+def make_si_from_so_with_advances(sales_order, pos_profile=None):
+    from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+    import frappe
+
+    so = frappe.get_doc("Sales Order", sales_order)
+
+    # Create Sales Invoice from Sales Order
+    si_name = make_sales_invoice(sales_order)
+    si = frappe.get_doc(si_name)
+
+    # Core settings
+    si.update_stock = 1
+    si.allocate_advances_automatically = 1
+
+    # POS Profile (metadata only, no POS behavior)
+    if pos_profile:
+        si.pos_profile = pos_profile
+
+    # Header sync
+    si.customer = so.customer
+    si.customer_name = so.customer_name
+    si.company = so.company
+    si.currency = so.currency
+    si.conversion_rate = so.conversion_rate
+    si.selling_price_list = so.selling_price_list
+    si.price_list_currency = so.price_list_currency
+    si.plc_conversion_rate = so.plc_conversion_rate
+    si.ignore_pricing_rule = so.ignore_pricing_rule
+
+    # Discounts
+    si.discount_amount = so.discount_amount
+    si.additional_discount_percentage = so.additional_discount_percentage
+
+    # Taxes
+    si.taxes = []
+    for t in so.taxes:
+        si.append("taxes", {
+            "charge_type": t.charge_type,
+            "account_head": t.account_head,
+            "description": t.description,
+            "rate": t.rate,
+            "cost_center": t.cost_center,
+        })
+
+    # Sales Team
+    si.sales_team = []
+    for sp in so.sales_team:
+        si.append("sales_team", {
+            "sales_person": sp.sales_person,
+            "allocated_percentage": sp.allocated_percentage or 100,
+            "allocated_amount": 0,
+        })
+
+    # Finalize
+    si.set_missing_values()
+    si.calculate_taxes_and_totals()
+
+    si.flags.ignore_permissions = True
+    si.insert()
+    si.submit() 
+
+    return {
+        "sales_invoice": si.name
+    }
