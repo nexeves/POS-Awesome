@@ -43,8 +43,6 @@ class POSClosingShift(Document):
         self.update_payment_reconciliation()
 
     def update_payment_reconciliation(self):
-        # update the difference values in Payment Reconciliation child table
-        # get default precision for site
         precision = (
             frappe.get_cached_value("System Settings", None, "currency_precision") or 3
         )
@@ -115,6 +113,15 @@ def get_pos_invoices(pos_opening_shift):
 
 
 @frappe.whitelist()
+def get_pos_sales_orders(pos_opening_shift):
+    return frappe.get_all(
+        "Sales Order",
+        filters={"docstatus": 1, "custom_pos_opening_shift": pos_opening_shift},
+        fields=["name", "transaction_date", "customer", "advance_paid"],
+    )
+
+
+@frappe.whitelist()
 def get_payments_entries(pos_opening_shift):
     return frappe.get_all(
         "Payment Entry",
@@ -150,11 +157,14 @@ def make_closing_shift_from_opening(opening_shift):
     closing_shift.total_quantity = 0
 
     invoices = get_pos_invoices(opening_shift.get("name"))
+    sales_orders = get_pos_sales_orders(opening_shift.get("name"))
 
     pos_transactions = []
     taxes = []
     payments = []
     pos_payments_table = []
+    so_payments_table = []
+
     for detail in opening_shift.get("balance_details"):
         payments.append(
             frappe._dict(
@@ -231,6 +241,99 @@ def make_closing_shift_from_opening(opening_shift):
                     )
                 )
 
+    for so in sales_orders:
+        # Get full SO document to access taxes
+        so_doc = frappe.get_doc("Sales Order", so["name"])
+
+        so_payments_table.append(
+            frappe._dict(
+                {
+                    "sales_order": so["name"],
+                    "date": so["transaction_date"],
+                    "customer": so["customer"],
+                    "amount": flt(so.get("advance_paid") or 0),
+                }
+            )
+        )
+
+        # ADD: Include SO grand_total and net_total in closing shift totals
+        closing_shift.grand_total += flt(so_doc.grand_total)
+        closing_shift.net_total += flt(so_doc.net_total)
+        closing_shift.total_quantity += flt(so_doc.total_qty)
+
+        # ADD: Include SO taxes in the tax section
+        for t in so_doc.taxes:
+            existing_tax = [
+                tx
+                for tx in taxes
+                if tx.account_head == t.account_head and tx.rate == t.rate
+            ]
+            if existing_tax:
+                existing_tax[0].amount += flt(t.tax_amount)
+            else:
+                taxes.append(
+                    frappe._dict(
+                        {
+                            "account_head": t.account_head,
+                            "rate": t.rate,
+                            "amount": t.tax_amount,
+                        }
+                    )
+                )
+
+        # Payment Entry handling (this already adds the amount to reconciliation)
+        pe_refs = frappe.db.sql(
+            """
+            SELECT 
+                pe.name AS payment_entry,
+                pe.posting_date,
+                pe.party AS customer,
+                pe.mode_of_payment,
+                per.allocated_amount
+            FROM `tabPayment Entry` pe
+            INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+            WHERE per.reference_doctype = 'Sales Order'
+            AND per.reference_name = %s
+            AND pe.docstatus = 1
+            AND pe.payment_type = 'Receive'
+            """,
+            (so["name"],),
+            as_dict=1,
+        )
+
+        for row in pe_refs:
+            allocated = flt(row.get("allocated_amount") or 0)
+            if not allocated:
+                continue
+
+            pos_payments_table.append(
+                frappe._dict(
+                    {
+                        "payment_entry": row.payment_entry,
+                        "mode_of_payment": row.mode_of_payment,
+                        "paid_amount": allocated,
+                        "posting_date": row.posting_date,
+                        "customer": row.customer,
+                    }
+                )
+            )
+
+            existing_pe = [
+                pay for pay in payments if pay.mode_of_payment == row.mode_of_payment
+            ]
+            if existing_pe:
+                existing_pe[0].expected_amount += allocated
+            else:
+                payments.append(
+                    frappe._dict(
+                        {
+                            "mode_of_payment": row.mode_of_payment,
+                            "opening_amount": 0,
+                            "expected_amount": allocated,
+                        }
+                    )
+                )
+
     pos_payments = get_payments_entries(opening_shift.get("name"))
 
     for py in pos_payments:
@@ -262,6 +365,7 @@ def make_closing_shift_from_opening(opening_shift):
             )
 
     closing_shift.set("pos_transactions", pos_transactions)
+    closing_shift.set("custom_sales_order_payments", so_payments_table)
     closing_shift.set("payment_reconciliation", payments)
     closing_shift.set("taxes", taxes)
     closing_shift.set("pos_payments", pos_payments_table)

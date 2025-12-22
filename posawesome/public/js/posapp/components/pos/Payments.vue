@@ -739,12 +739,16 @@ export default {
     },
     submit(event, payment_received = false, print = false) {
       if (!this.is_return && !this.sales_person) {
-        evntBus.$emit("show_mesage", {
-          text: __("Please select a Sales Person before submitting."),
-          color: "error",
-        });
-        frappe.utils.play_sound("error");
-        return;
+          evntBus.$emit("show_mesage", {
+              text: __("Please select a Sales Person before submitting."),
+              color: "error",
+          });
+          frappe.utils.play_sound("error");
+          return;
+      }
+      if (this.invoiceType === "Order") {
+          this.submit_sales_order(print);
+          return;
       }
       if (!this.invoice_doc.is_return && this.total_payments < 0) {
         evntBus.$emit("show_mesage", {
@@ -914,6 +918,71 @@ export default {
         },
       });
     },
+    async submit_sales_order(print = false) {
+        const vm = this;
+
+        if (!vm.invoice_doc.posa_delivery_date) {
+            evntBus.$emit("show_mesage", {
+                text: "Please select Delivery Date",
+                color: "error",
+            });
+            return;
+        }
+
+        // Build final payment + totals data (same as SI)
+        let data = {
+            payments: vm.invoice_doc.payments,
+            discount_amount: vm.invoice_doc.discount_amount,
+            additional_discount_percentage: vm.invoice_doc.additional_discount_percentage,
+            delivery_charges: vm.invoice_doc.posa_delivery_charges_rate,
+            paid_amount: vm.total_payments,
+            taxes: vm.invoice_doc.taxes || [],
+            mode_of_payment: vm.invoice_doc.payments?.[0]?.mode_of_payment || "Cash",
+            sales_person: vm.sales_person,
+            delivery_date: vm.invoice_doc.posa_delivery_date
+        };
+
+
+        try {
+            // Backend: update taxes, totals, and submit SO + create Payment Entry
+            const res = await frappe.call({
+                method: "posawesome.posawesome.api.posapp.submit_sales_order_with_payment",
+                args: {
+                    sales_order: vm.invoice_doc.name,
+                    data: JSON.stringify(data)
+                }
+            });
+
+            if (!res.message) {
+                evntBus.$emit("show_mesage", {
+                    text: "Failed to submit Sales Order",
+                    color: "error",
+                });
+                return;
+            }
+
+            const so_name = res.message.name;
+
+            evntBus.$emit("show_mesage", {
+                text: `Sales Order ${so_name} Submitted`,
+                color: "success",
+            });
+            frappe.utils.play_sound("submit");
+
+            if (print) {
+                vm.print_sales_order(so_name);
+            }
+
+            vm.back_to_invoice();
+            evntBus.$emit("new_invoice");
+        } catch (error) {
+            evntBus.$emit("show_mesage", {
+                text: `Error: ${error.message}`,
+                color: "error",
+            });
+            frappe.utils.play_sound("error");
+        }
+    },
     set_full_amount(idx) {
       this.invoice_doc.payments.forEach((payment) => {
         payment.amount =
@@ -963,6 +1032,33 @@ export default {
         true
       );
     },
+    print_sales_order(so_name) {
+        const print_format =
+            this.pos_profile.print_format_for_online ||
+            this.pos_profile.print_format;
+
+        const letter_head = this.pos_profile.letter_head || 0;
+
+        const url =
+            frappe.urllib.get_base_url() +
+            "/printview?doctype=Sales%20Order&name=" +
+            so_name +
+            "&trigger_print=1" +
+            "&format=" +
+            print_format +
+            "&no_letterhead=" +
+            letter_head;
+
+        const printWindow = window.open(url, "Print-SO");
+        printWindow.addEventListener(
+            "load",
+            function () {
+                printWindow.print();
+            },
+            true
+        );
+    },
+
     validate_due_date() {
       const today = frappe.datetime.now_date();
       const parse_today = Date.parse(today);

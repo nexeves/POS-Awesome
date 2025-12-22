@@ -851,6 +851,7 @@ export default {
       discount_amount: 0,
       additional_discount_percentage: 0,
       total_tax: 0,
+      taxes: [],
       items: [],
       posOffers: [],
       posa_offers: [],
@@ -1128,6 +1129,7 @@ export default {
       this.posa_coupons = [];
       this.return_doc = "";
       const doc = this.get_invoice_doc();
+      this.taxes = [];
       if (doc.name) {
         old_invoice = this.update_invoice(doc);
       } else {
@@ -1464,58 +1466,108 @@ export default {
     },
 
     async show_payment() {
-      if (!this.customer) {
-        evntBus.$emit("show_mesage", {
-          text: __(`There is no Customer !`),
-          color: "error",
-        });
-        return;
-      }
-      if (!this.items.length) {
-        evntBus.$emit("show_mesage", {
-          text: __(`There is no Items !`),
-          color: "error",
-        });
-        return;
-      }
-      if (!this.validate()) {
-        return;
-      }
-      if (this.invoice_doc.doctype == "Sales Order") {
-        evntBus.$emit("show_payment", "true");
-        const invoice_doc = await this.process_invoice_from_order();
-        evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-      } else if (this.invoice_doc.doctype == "Sales Invoice") {
-        const sales_invoice_item = this.invoice_doc.items[0];
-        var sales_invoice_item_doc = {};
-        frappe.call({
-          method:
-            "posawesome.posawesome.api.posapp.get_sales_invoice_child_table",
-          args: {
-            sales_invoice: this.invoice_doc.name,
-            sales_invoice_item: sales_invoice_item.name,
-          },
-          async: false,
-          callback: function (r) {
-            if (r.message) {
-              sales_invoice_item_doc = r.message;
-            }
-          },
-        });
-        if (sales_invoice_item_doc.sales_order) {
-          evntBus.$emit("show_payment", "true");
-          const invoice_doc = await this.process_invoice_from_order();
-          evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-        } else {
-          evntBus.$emit("show_payment", "true");
-          const invoice_doc = this.process_invoice();
-          evntBus.$emit("send_invoice_doc_payment", invoice_doc);
+        if (!this.customer) {
+            evntBus.$emit("show_mesage", {
+                text: __("There is no Customer !"),
+                color: "error",
+            });
+            return;
         }
-      } else {
+
+        if (!this.items.length) {
+            evntBus.$emit("show_mesage", {
+                text: __("There is no Items !"),
+                color: "error",
+            });
+            return;
+        }
+
+        if (!this.validate()) return;
+
+        // Ensure tax templates exist on items
+        this.items.forEach(i => {
+            if (!i.item_tax_template) i.item_tax_template = null;
+        });
+
+        // ============ ORDER FLOW ============
+        if (this.invoiceType === "Order") {
+          
+          // Create SO only once
+          if (!this.invoice_doc || this.invoice_doc.doctype !== "Sales Order") {
+            
+            // Prepare items with all necessary fields
+            const items_for_backend = this.items.map(i => ({
+              item_code: i.item_code,
+              qty: i.qty,
+              rate: i.rate,
+              discount_percentage: i.discount_percentage || 0,
+              discount_amount: i.discount_amount || 0,
+              warehouse: this.pos_profile.warehouse,
+              uom: i.uom,
+              item_tax_template: i.item_tax_template || null
+            }));
+
+            // Ensure taxes array is never empty if VAT/taxes exist
+            const taxes_payload = Array.isArray(this.taxes) && this.taxes.length > 0 
+              ? this.taxes 
+              : [];
+
+            try {
+              // Create Draft Sales Order
+              const so_name = await frappe.xcall(
+                "posawesome.posawesome.api.posapp.create_draft_sales_order_from_cart",
+                {
+                  customer: this.customer,
+                  company: this.pos_profile.company,
+                  items: JSON.stringify(items_for_backend),
+                  delivery_date: this.posting_date,
+                  pos_opening_shift: this.pos_opening_shift?.name,
+                  discount_amount: flt(this.discount_amount),
+                  additional_discount_percentage: flt(this.additional_discount_percentage),
+                  taxes: JSON.stringify(taxes_payload),
+                  pos_profile: this.pos_profile.name,
+                  warehouse: this.pos_profile.warehouse,
+                }
+              );
+
+              this.invoice_doc = { doctype: "Sales Order", name: so_name };
+            } catch (error) {
+              evntBus.$emit("show_mesage", {
+                text: __("Error creating Sales Order: {0}", [error.message]),
+                color: "error",
+              });
+              return;
+            }
+          }
+
+          // Load SO as invoice-like view for payment popup
+          try {
+            const invoice_doc = await frappe.xcall(
+              "posawesome.posawesome.api.posapp.get_invoice_doc_from_sales_order",
+              { sales_order: this.invoice_doc.name }
+            );
+
+            // Verify taxes are included
+            if (!invoice_doc.taxes) {
+              invoice_doc.taxes = [];
+            }
+
+            evntBus.$emit("show_payment", "true");
+            evntBus.$emit("send_invoice_doc_payment", invoice_doc);
+            return;
+          } catch (error) {
+            evntBus.$emit("show_mesage", {
+              text: __("Error loading Sales Order: {0}", [error.message]),
+              color: "error",
+            });
+            return;
+          }
+        }
+
+        // ============ INVOICE FLOW ============
         evntBus.$emit("show_payment", "true");
         const invoice_doc = this.process_invoice();
         evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-      }
     },
 
     validate() {
