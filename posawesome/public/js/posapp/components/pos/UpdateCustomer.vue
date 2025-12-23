@@ -57,15 +57,15 @@
                   v-model="email_id"
                 ></v-text-field>
               </v-col> -->
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-select
                   dense
                   label="Gender"
                   :items="genders"
                   v-model="gender"
                 ></v-select>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -74,16 +74,16 @@
                   hide-details
                   v-model="referral_code"
                 ></v-text-field>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-menu
                   ref="birthday_menu"
                   v-model="birthday_menu"
                   :close-on-content-click="false"
                   transition="scale-transition"
                   dense
-                >
-                  <template v-slot:activator="{ on, attrs }">
+                > -->
+                  <!-- <template v-slot:activator="{ on, attrs }">
                     <v-text-field
                       v-model="birthday"
                       :label="frappe._('Birthday')"
@@ -106,8 +106,8 @@
                   >
                   </v-date-picker>
                 </v-menu>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -122,8 +122,8 @@
                   required
                 >
                 </v-autocomplete>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -138,7 +138,7 @@
                   required
                 >
                 </v-autocomplete>
-              </v-col>
+              </v-col> -->
                             <v-col cols="6">
                 <v-text-field
                   dense
@@ -149,7 +149,7 @@
                   v-model="custom_location"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6" v-if="loyalty_program">
+              <!-- <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
                   v-model="loyalty_program"
                   :label="frappe._('Loyalty Program')"
@@ -165,8 +165,8 @@
                   dense
                   readonly
                   hide-details
-                ></v-text-field>
-              </v-col>
+                ></v-text-field> -->
+              <!-- </v-col> -->
             </v-row>
           </v-container>
         </v-card-text>
@@ -198,10 +198,10 @@ export default {
     referral_code: '',
     birthday: null,
     birthday_menu: false,
-    group: '',
-    groups: [],
-    territory: '',
-    territorys: [],
+    // group: '',
+    // groups: [],
+    // territory: '',
+    // territorys: [],
     genders: [],
     customer_type: 'Individual',
     gender: '',
@@ -222,8 +222,8 @@ export default {
       // this.email_id = '';
       this.referral_code = '';
       this.birthday = '';
-      this.group = frappe.defaults.get_user_default('Customer Group');
-      this.territory = frappe.defaults.get_user_default('Territory');
+      // this.group = frappe.defaults.get_user_default('Customer Group');
+      // this.territory = frappe.defaults.get_user_default('Territory');
       this.customer_id = '';
       this.customer_type = 'Individual';
       this.gender = '';
@@ -231,42 +231,42 @@ export default {
       this.loyalty_program = null;
       this.custom_location ='';
     },
-    getCustomerGroups() {
-      if (this.groups.length > 0) return;
-      const vm = this;
-      frappe.db
-        .get_list('Customer Group', {
-          fields: ['name'],
-          filters: { is_group: 0 },
-          limit: 1000,
-          order_by: 'name',
-        })
-        .then((data) => {
-          if (data.length > 0) {
-            data.forEach((el) => {
-              vm.groups.push(el.name);
-            });
-          }
-        });
-    },
-    getCustomerTerritorys() {
-      if (this.territorys.length > 0) return;
-      const vm = this;
-      frappe.db
-        .get_list('Territory', {
-          fields: ['name'],
-          filters: { is_group: 0 },
-          limit: 5000,
-          order_by: 'name',
-        })
-        .then((data) => {
-          if (data.length > 0) {
-            data.forEach((el) => {
-              vm.territorys.push(el.name);
-            });
-          }
-        });
-    },
+    // getCustomerGroups() {
+    //   if (this.groups.length > 0) return;
+    //   const vm = this;
+    //   frappe.db
+    //     .get_list('Customer Group', {
+    //       fields: ['name'],
+    //       filters: { is_group: 0 },
+    //       limit: 1000,
+    //       order_by: 'name',
+    //     })
+    //     .then((data) => {
+    //       if (data.length > 0) {
+    //         data.forEach((el) => {
+    //           vm.groups.push(el.name);
+    //         });
+    //       }
+    //     });
+    // },
+    // getCustomerTerritorys() {
+    //   if (this.territorys.length > 0) return;
+    //   const vm = this;
+    //   frappe.db
+    //     .get_list('Territory', {
+    //       fields: ['name'],
+    //       filters: { is_group: 0 },
+    //       limit: 5000,
+    //       order_by: 'name',
+    //     })
+    //     .then((data) => {
+    //       if (data.length > 0) {
+    //         data.forEach((el) => {
+    //           vm.territorys.push(el.name);
+    //         });
+    //       }
+    //     });
+    // },
     getGenders() {
       const vm = this;
       frappe.db
@@ -291,20 +291,20 @@ export default {
         });
         return;
       }
-      if (!this.group) {
-        evntBus.$emit('show_mesage', {
-          text: __('Customer group is required.'),
-          color: 'error',
-        });
-        return;
-      }
-      if (!this.territory) {
-        evntBus.$emit('show_mesage', {
-          text: __('Customer territory is required.'),
-          color: 'error',
-        });
-        return;
-      }
+      // if (!this.group) {
+      //   evntBus.$emit('show_mesage', {
+      //     text: __('Customer group is required.'),
+      //     color: 'error',
+      //   });
+      //   return;
+      // }
+      // if (!this.territory) {
+      //   evntBus.$emit('show_mesage', {
+      //     text: __('Customer territory is required.'),
+      //     color: 'error',
+      //   });
+      //   return;
+      // }
       if (this.customer_name) {
         const vm = this;
         const args = {
@@ -316,8 +316,8 @@ export default {
           // email_id: this.email_id,
           referral_code: this.referral_code,
           birthday: this.birthday,
-          customer_group: this.group,
-          territory: this.territory,
+          // customer_group: this.group,
+          // territory: this.territory,
           customer_type: this.customer_type,
           gender: this.gender,
           method: this.customer_id ? 'update' : 'create',
@@ -369,8 +369,8 @@ export default {
         this.birthday = data.birthday;
         this.group = data.customer_group;
         this.territory = data.territory;
-        this.loyalty_points = data.loyalty_points;
-        this.loyalty_program = data.loyalty_program;
+        // this.loyalty_points = data.loyalty_points;
+        // this.loyalty_program = data.loyalty_program;
         this.gender = data.gender;
         this.custom_location = data.custom_location;
 
@@ -382,9 +382,9 @@ export default {
     evntBus.$on('payments_register_pos_profile', (data) => {
       this.pos_profile = data.pos_profile;
     });
-    this.getCustomerGroups();
-    this.getCustomerTerritorys();
-    this.getGenders();
+    // this.getCustomerGroups();
+    // this.getCustomerTerritorys();
+    // this.getGenders();
     // set default values for customer group and territory from user defaults
     this.group = frappe.defaults.get_user_default('Customer Group');
     this.territory = frappe.defaults.get_user_default('Territory');
