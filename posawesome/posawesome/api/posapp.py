@@ -1053,7 +1053,6 @@ def get_stock_availability(item_code, warehouse):
 @frappe.whitelist()
 def create_customer(
     customer_id=None,
-    custom_customer_id=None,  
     customer_name=None,
     company=None,
     pos_profile_doc=None,
@@ -1073,26 +1072,14 @@ def create_customer(
 ):
     pos_profile = json.loads(pos_profile_doc)
 
-    if not customer_id:
-        customer_id = custom_customer_id
-
-    if not customer_id:
-        frappe.throw(_("Customer ID is required"))
-
  
     if method == "create":
 
-        is_exist = frappe.db.exists(
-            "Customer",
-            {"custom_customer_id": customer_id}
-        )
-        if is_exist:
-            frappe.throw(_("Customer ID already exists"))
+
 
         customer = frappe.get_doc({
             "doctype": "Customer",
             "customer_name": customer_name,
-            "custom_customer_id": customer_id, 
             "posa_referral_company": company,
             "tax_id": tax_id,
             "mobile_no": mobile_no,
@@ -1116,7 +1103,6 @@ def create_customer(
         customer_doc = frappe.get_doc("Customer", customer_id)
 
         customer_doc.customer_name = customer_name
-        customer_doc.custom_customer_id = customer_id   
         customer_doc.posa_referral_company = company
         customer_doc.tax_id = tax_id
         customer_doc.posa_referral_code = referral_code
@@ -1132,8 +1118,8 @@ def create_customer(
 
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
-        if email_id != customer_doc.email_id:
-            set_customer_info(customer_doc.name, "email_id", email_id)
+        # if email_id != customer_doc.email_id:
+        #     set_customer_info(customer_doc.name, "email_id", email_id)
 
         return customer_doc
 
@@ -1276,7 +1262,6 @@ def search_invoices_for_return(invoice_name, company):
         or_filters=[
             ["customer_name", "like", f"%{query}%"],
             ["mobile_no", "like", f"%{query}%"],
-            ["custom_customer_id", "like", f"%{query}%"],
         ],
         pluck="name"
     )
