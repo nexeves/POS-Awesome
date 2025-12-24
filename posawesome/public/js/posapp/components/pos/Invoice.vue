@@ -687,6 +687,8 @@
               ></v-text-field>
             </v-col>
             <v-col
+              v-if="!pos_profile.posa_use_percentage_discount"
+
               cols="6"
               class="pa-1"
             >
@@ -721,6 +723,8 @@
               ></v-text-field>
             </v-col>
             <v-col
+              v-if="pos_profile.posa_use_percentage_discount"
+
               cols="6"
               class="pa-1"
             >
