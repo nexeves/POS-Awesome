@@ -1092,8 +1092,10 @@ def create_customer(
             "custom_location": custom_location,
         })
 
-        customer.customer_group = customer_group or "All Customer Groups"
-        customer.territory = territory or "All Territories"
+ 
+        customer.customer_group = customer_group
+        customer.territory = territory
+
 
         customer.save(ignore_permissions=True)
         return customer
@@ -1109,13 +1111,10 @@ def create_customer(
         customer_doc.posa_referral_code = referral_code
         customer_doc.posa_birthday = birthday
         customer_doc.customer_type = customer_type
+        customer_doc.customer_group=customer_group
+        customer_doc.territory=territory
 
-        customer_doc.customer_group = (
-            customer_group or customer_doc.customer_group or "All Customer Groups"
-        )
-        customer_doc.territory = (
-            territory or customer_doc.territory or "All Territories"
-        )        
+      
         customer_doc.gender = gender
         customer_doc.custom_location = custom_location
 
