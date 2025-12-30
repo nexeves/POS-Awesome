@@ -12,6 +12,7 @@ from erpnext.stock.get_item_details import get_item_details
 from erpnext.accounts.doctype.pos_profile.pos_profile import get_item_groups
 from frappe.utils.background_jobs import enqueue
 from erpnext.accounts.party import get_party_bank_account
+from posawesome.posawesome.api.payment_entry import create_payment_entry
 from erpnext.accounts.utils import get_balance_on
 from erpnext.stock.doctype.batch.batch import (
     get_batch_no,
@@ -1887,3 +1888,23 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+@frappe.whitelist()
+def create_advance_payment(customer, mode_of_payment, amount, pos_profile):
+    if not customer or not mode_of_payment or not amount:
+        frappe.throw(_("Missing required fields"))
+    
+    pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+    company = pos_profile_doc.company
+    currency = pos_profile_doc.currency
+    cost_center = pos_profile_doc.cost_center
+    
+    create_payment_entry(
+        company=company,
+        customer=customer,
+        amount=flt(amount),
+        currency=currency,
+        mode_of_payment=mode_of_payment,
+        cost_center=cost_center,
+        submit=1
+    )
+    return "Success"

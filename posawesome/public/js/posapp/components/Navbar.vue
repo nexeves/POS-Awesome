@@ -22,6 +22,15 @@
       </v-toolbar-title>
 
       <v-spacer></v-spacer>
+      <v-btn
+        color="primary"
+        outlined
+        class="ml-2"
+        @click="$refs.advancePaymentDialog.open(pos_profile)"
+      >
+        <v-icon left>mdi-credit-card-plus</v-icon>
+        {{ __('Create Advance Payments') }}
+      </v-btn>
       <v-btn style="cursor: unset" text color="primary">
         <span right>{{ pos_profile.name }}</span>
       </v-btn>
@@ -134,13 +143,18 @@
         <v-card-text>{{ freezeMsg }}</v-card-text>
       </v-card>
     </v-dialog>
+    <AdvancePaymentDialog ref="advancePaymentDialog" />
   </nav>
 </template>
 
 <script>
 import { evntBus } from '../bus';
+import AdvancePaymentDialog from './AdvancePaymentDialog.vue';
 
 export default {
+  components: {
+    AdvancePaymentDialog,
+  },
   // components: {MyPopup},
   data() {
     return {
