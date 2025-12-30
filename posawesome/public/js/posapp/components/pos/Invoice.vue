@@ -152,6 +152,34 @@
           </v-menu>
         </v-col>
       </v-row>
+      <v-row align="center" class="items px-2 py-1 mt-0 pt-0">
+        <v-col cols="6" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_pioints_amount)"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+        <v-col cols="6" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Customer Balance')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_customer_balance)"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+      </v-row>
 
       <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
         <template @mouseover="style = 'cursor: pointer'">
@@ -443,6 +471,17 @@
                       disabled
                     ></v-text-field>
                   </v-col>
+                  <v-col cols="4" class="d-flex align-center">
+               <v-btn
+                  color="primary"
+                  small
+                  @click="open_stock(item)"
+                >
+                  Check Warehouse
+                </v-btn>
+                
+                  </v-col>
+
                   <v-col align="center" cols="4" v-if="item.posa_offer_applied">
                     <v-checkbox
                       dense
@@ -870,11 +909,12 @@ export default {
       posting_date: frappe.datetime.nowdate(),
       items_headers: [
         {
-          text: __("Name"),
+          text: __("Item Code"),
           align: "start",
           sortable: true,
-          value: "item_name",
+          value: "item_code",
         },
+        {text:__("Name"),value:"item_name",align:"center"},
         { text: __("QTY"), value: "qty", align: "center" },
         { text: __("UOM"), value: "uom", align: "center" },
         { text: __("Rate"), value: "rate", align: "center" },
@@ -921,7 +961,26 @@ export default {
       });
       return this.flt(sum, this.float_precision);
     },
-  },
+    available_pioints_amount() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points) {
+        amount =
+          this.customer_info.loyalty_points *
+          this.customer_info.conversion_factor;
+      }
+      return amount;
+    }, 
+    available_customer_balance() {
+      let amount = 0;
+      if (this.customer_info.party_balance) {
+        amount = this.customer_info.party_balance*-1;
+      }
+      return amount;
+    },
+
+    
+   },
+
 
   methods: {
     remove_item(item) {
@@ -1698,6 +1757,13 @@ export default {
 
     open_returns() {
       evntBus.$emit("open_returns", this.pos_profile.company);
+    },
+    open_stock(item) {
+      evntBus.$emit('open_stock', {
+        company: this.pos_profile.company,
+        item_code: item.item_code,
+        current_warehouse: this.pos_profile.warehouse,
+      });
     },
 
     close_payments() {
