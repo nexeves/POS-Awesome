@@ -798,7 +798,8 @@ export default {
       const write_off = flt(this.invoice_doc.write_off_amount || 0);
       const paid_amount = flt(this.total_payments);
 
-      if (paid_amount + write_off < invoice_total) {
+ // run validation ONLY if NOT a credit sale
+      if (!this.is_credit_sale && (paid_amount + write_off < invoice_total)) {
         evntBus.$emit("show_mesage", {
           text: __("The amount paid is not complete"),
           color: "error",
@@ -806,6 +807,7 @@ export default {
         frappe.utils.play_sound("error");
         return;
       }
+      
 
       if (
         this.pos_profile.posa_allow_partial_payment &&
