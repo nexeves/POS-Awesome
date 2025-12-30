@@ -40,7 +40,7 @@
                   v-model="customer_name"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -49,7 +49,7 @@
                   hide-details
                   v-model="tax_id"
                 ></v-text-field>
-              </v-col>
+              </v-col> -->
               <v-col cols="6">
                 <v-text-field
                   dense
@@ -70,15 +70,15 @@
                   v-model="email_id"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-select
                   dense
                   label="Gender"
                   :items="genders"
                   v-model="gender"
                 ></v-select>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -87,8 +87,8 @@
                   hide-details
                   v-model="referral_code"
                 ></v-text-field>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-menu
                   ref="birthday_menu"
                   v-model="birthday_menu"
@@ -119,8 +119,8 @@
                   >
                   </v-date-picker>
                 </v-menu>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -135,8 +135,8 @@
                   required
                 >
                 </v-autocomplete>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -151,8 +151,8 @@
                   required
                 >
                 </v-autocomplete>
-              </v-col>
-              <v-col cols="6" v-if="loyalty_program">
+              </v-col> -->
+              <!-- <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
                   v-model="loyalty_program"
                   :label="frappe._('Loyalty Program')"
@@ -168,8 +168,8 @@
                   dense
                   readonly
                   hide-details
-                ></v-text-field>
-              </v-col>
+                ></v-text-field> -->
+              <!-- </v-col> -->
             </v-row>
           </v-container>
         </v-card-text>
@@ -302,20 +302,20 @@ export default {
         return;
       }
 
-      if (!this.group) {
-        evntBus.$emit('show_mesage', {
-          text: __('Customer group is required.'),
-          color: 'error',
-        });
-        return;
-      }
-      if (!this.territory) {
-        evntBus.$emit('show_mesage', {
-          text: __('Customer territory is required.'),
-          color: 'error',
-        });
-        return;
-      }
+      // if (!this.group) {
+      //   evntBus.$emit('show_mesage', {
+      //     text: __('Customer group is required.'),
+      //     color: 'error',
+      //   });
+      //   return;
+      // }
+      // if (!this.territory) {
+      //   evntBus.$emit('show_mesage', {
+      //     text: __('Customer territory is required.'),
+      //     color: 'error',
+      //   });
+        // return;
+      // }
       if (this.customer_name) {
         const vm = this;
         const args = {
