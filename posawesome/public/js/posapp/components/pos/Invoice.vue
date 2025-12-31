@@ -153,7 +153,7 @@
         </v-col>
       </v-row>
       <v-row align="center" class="items px-2 py-1 mt-0 pt-0">
-        <v-col cols="6" class="pb-2">
+        <!-- <v-col cols="6" class="pb-2">
           <v-text-field
               dense
               outlined
@@ -165,8 +165,8 @@
               :prefix="currencySymbol(invoice_doc.currency)"
               disabled
             ></v-text-field>
-        </v-col>
-        <v-col cols="6" class="pb-2">
+        </v-col> -->
+        <v-col cols="12" class="pb-2">
           <v-text-field
               dense
               outlined
