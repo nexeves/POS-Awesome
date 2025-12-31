@@ -25,6 +25,7 @@
                   background-color="white"
                   hide-details
                   v-model="customer_name"
+                  @input="customer_name = customer_name.toUpperCase()"
                 ></v-text-field>
               </v-col>
               <!-- <v-col cols="6">
@@ -147,6 +148,8 @@
                   background-color="white"
                   hide-details
                   v-model="custom_location"
+                  @input="custom_location = custom_location.toUpperCase()"
+
                 ></v-text-field>
               </v-col>
               <!-- <v-col cols="6" v-if="loyalty_program">
