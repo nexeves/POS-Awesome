@@ -14,6 +14,8 @@ from frappe.utils.background_jobs import enqueue
 from erpnext.accounts.party import get_party_bank_account
 from posawesome.posawesome.api.payment_entry import create_payment_entry
 from erpnext.accounts.utils import get_balance_on
+from frappe.utils import nowdate, flt, cstr, getdate
+
 from erpnext.stock.doctype.batch.batch import (
     get_batch_no,
     get_batch_qty,
@@ -1904,6 +1906,8 @@ def create_advance_payment(customer, mode_of_payment, amount, pos_profile):
         amount=flt(amount),
         currency=currency,
         mode_of_payment=mode_of_payment,
+        reference_date=getdate(),
+        reference_no=mode_of_payment,
         cost_center=cost_center,
         submit=1
     )
