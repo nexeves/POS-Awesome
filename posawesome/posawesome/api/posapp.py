@@ -1071,6 +1071,7 @@ def create_customer(
     customer_type=None,
     gender=None,
     method="create",
+    salutation=None,
 ):
     pos_profile = json.loads(pos_profile_doc)
 
@@ -1102,6 +1103,7 @@ def create_customer(
             "posa_birthday": birthday,
             "customer_type": customer_type,
             "gender": gender,
+            "salutation": salutation,
         })
 
         customer.customer_group = customer_group 
@@ -1125,6 +1127,7 @@ def create_customer(
         customer_doc.territory = territory
         customer_doc.customer_group = customer_group
         customer_doc.gender = gender
+        customer_doc.salutation = salutation
 
 
         customer_doc.save(ignore_permissions=True)
@@ -1772,6 +1775,8 @@ def get_customer_info(customer):
     party_type="Customer",
     party=customer.name
     )
+    res["salutation"] = customer.salutation  
+
 
 
 
