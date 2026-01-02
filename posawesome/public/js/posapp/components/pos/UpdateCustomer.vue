@@ -17,6 +17,29 @@
         <v-card-text class="pa-0">
           <v-container>
             <v-row>
+        <v-col cols="6">
+          <v-autocomplete
+            dense
+            clearable
+            color="primary"
+            :label="frappe._('Salutation')"
+            v-model="salutation"
+            :items="salutations"
+            hide-details
+          ></v-autocomplete>
+        </v-col>
+
+
+            <v-col cols="6">
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Customer Name') + ' *'"
+                  background-color="white"
+                  hide-details
+                  v-model="customer_name"
+                ></v-text-field>
+              </v-col>
               <v-col cols="12">
               <v-text-field
                 dense
@@ -30,16 +53,7 @@
               ></v-text-field>
             </v-col>
             
-              <v-col cols="6">
-                <v-text-field
-                  dense
-                  color="primary"
-                  :label="frappe._('Customer Name') + ' *'"
-                  background-color="white"
-                  hide-details
-                  v-model="customer_name"
-                ></v-text-field>
-              </v-col>
+
               <!-- <v-col cols="6">
                 <v-text-field
                   dense
@@ -211,6 +225,8 @@ export default {
     gender: '',
     loyalty_points: null,
     loyalty_program: null,
+    salutation: '',        
+    salutations: [],  
   }),
   watch: {},
   methods: {
@@ -233,6 +249,8 @@ export default {
       this.gender = '';
       this.loyalty_points = null;
       this.loyalty_program = null;
+      this.salutation = '';
+
     },
     getCustomerGroups() {
       if (this.groups.length > 0) return;
@@ -252,6 +270,18 @@ export default {
           }
         });
     },
+    getSalutations() {
+      if (this.salutations.length > 0) return;
+
+      frappe.db.get_list('Salutation', {
+        fields: ['name'],
+        order_by: 'name',
+        limit: 50,
+      }).then((data) => {
+        this.salutations = data.map(d => d.name);
+      });
+    },
+
     getCustomerTerritorys() {
       if (this.territorys.length > 0) return;
       const vm = this;
@@ -315,7 +345,7 @@ export default {
       //     color: 'error',
       //   });
         // return;
-      // }
+      
       if (this.customer_name) {
         const vm = this;
         const args = {
@@ -334,6 +364,7 @@ export default {
           gender: this.gender,
           method: this.customer_id ? 'update' : 'create',
           pos_profile_doc: this.pos_profile,
+          salutation: this.salutation,
         };
         frappe.call({
           method: 'posawesome.posawesome.api.posapp.create_customer',
@@ -371,6 +402,7 @@ export default {
     evntBus.$on('open_update_customer', (data) => {
       this.customerDialog = true;
       if (data) {
+        this.salutation = data.salutation;
         this.customer_name = data.customer_name;
         this.customer_id = data.name;                
         this.custom_customer_id = data.name;
@@ -395,6 +427,8 @@ export default {
     this.getCustomerGroups();
     this.getCustomerTerritorys();
     this.getGenders();
+    this.getSalutations();
+
     // set default values for customer group and territory from user defaults
     this.group = frappe.defaults.get_user_default('Customer Group');
     this.territory = frappe.defaults.get_user_default('Territory');
