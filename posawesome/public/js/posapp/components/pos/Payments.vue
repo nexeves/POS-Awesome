@@ -793,7 +793,8 @@ export default {
         frappe.utils.play_sound("error");
         return;
       }
-      if (paid_amount > invoice_total){
+
+      if (invoice_total > 0 && paid_amount > invoice_total){
         evntBus.$emit("show_mesage", {
           text: __("Paid amount cannot be greater than invoice total"),
           color: "error",
