@@ -793,7 +793,11 @@ export default {
         frappe.utils.play_sound("error");
         return;
       }
+      const invoice_total =
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
 
+      const paid_amount = flt(this.total_payments);
+  
       if (invoice_total > 0 && paid_amount > invoice_total){
         evntBus.$emit("show_mesage", {
           text: __("Paid amount cannot be greater than invoice total"),
