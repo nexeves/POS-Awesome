@@ -681,6 +681,9 @@ def submit_invoice(invoice, data):
         if is_credit_return:
             invoice_doc.is_pos = 0
             invoice_doc.update_outstanding_for_self = 0
+        invoice_doc.redeemed_customer_credit = flt(
+           data.get("redeemed_customer_credit") or 0
+        )       
 
         invoice_doc.submit()
 
