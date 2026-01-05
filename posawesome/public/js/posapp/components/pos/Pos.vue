@@ -7,6 +7,7 @@
     <NewAddress></NewAddress>
     <MpesaPayments></MpesaPayments>
     <Variants></Variants>
+    <Warehouse></Warehouse>
     <OpeningDialog v-if="dialog" :dialog="dialog"></OpeningDialog>
     <v-row v-show="!dialog">
       <v-col
@@ -76,6 +77,7 @@ import NewAddress from './NewAddress.vue';
 import Variants from './Variants.vue';
 import Returns from './Returns.vue';
 import MpesaPayments from './Mpesa-Payments.vue';
+import Warehouse from './Warehouse.vue';
 
 export default {
   data: function () {
@@ -98,6 +100,7 @@ export default {
     ClosingDialog,
 
     Returns,
+    Warehouse,
     PosOffers,
     PosCoupons,
     NewAddress,
