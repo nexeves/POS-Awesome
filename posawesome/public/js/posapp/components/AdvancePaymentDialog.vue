@@ -50,7 +50,7 @@
                 required
                 outlined
                 dense
-                prepend-inner-icon="mdi-currency-usd"
+                prepend-inner-icon="mdi-currency"
                 background-color="grey lighten-5"
               ></v-text-field>
             </v-col>

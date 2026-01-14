@@ -1332,6 +1332,40 @@ def search_orders(company, currency, order_name=None):
     return data
 
 
+@frappe.whitelist()
+def get_supplier_names():
+    return frappe.get_all('Supplier', pluck='name')
+
+
+@frappe.whitelist()
+def create_purchase_receipt(supplier, items, pos_profile):
+    if isinstance(items, str):
+        items = json.loads(items)
+
+    pos_profile_doc = frappe.get_doc("POS Profile", pos_profile)
+    cost_center = pos_profile_doc.cost_center
+    warehouse = pos_profile_doc.warehouse
+
+    pr = frappe.new_doc("Purchase Receipt")
+    pr.supplier = supplier
+    pr.set_posting_time = 1
+    pr.posting_date = nowdate()
+    pr.cost_center = cost_center
+    pr.set_warehouse = warehouse
+    
+    for item in items:
+        pr.append("items", {
+            "item_code": item.get("item_code"),
+            "qty": flt(item.get("qty")),
+            "rate": flt(item.get("rate")),
+            "cost_center": cost_center,
+            "warehouse": warehouse
+        })
+
+    pr.save()
+    pr.submit()
+    return pr.name
+
 def get_version():
     branch_name = get_app_branch("erpnext")
     if "12" in branch_name:
