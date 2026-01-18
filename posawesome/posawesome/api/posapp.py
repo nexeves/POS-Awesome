@@ -15,6 +15,9 @@ from erpnext.accounts.party import get_party_bank_account
 from posawesome.posawesome.api.payment_entry import create_payment_entry
 from erpnext.accounts.utils import get_balance_on
 from frappe.utils import nowdate, flt, cstr, getdate
+from erpnext.accounts.utils import reconcile_against_document
+from frappe import _dict
+
 
 from erpnext.stock.doctype.batch.batch import (
     get_batch_no,
@@ -718,8 +721,9 @@ def set_batch_nos_for_bundels(doc, warehouse_field, throw=False):
 def redeeming_customer_credit(
     invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
 ):
-    # redeeming customer credit with journal voucher
+    """Redeem customer credit - updates original Journal Entry like reconciliation"""
     today = nowdate()
+    
     if data.get("redeemed_customer_credit"):
         cost_center = frappe.get_value(
             "POS Profile", invoice_doc.pos_profile, "cost_center"
@@ -734,50 +738,169 @@ def redeeming_customer_credit(
                     invoice_doc.pos_profile
                 )
             )
+        
         for row in data.get("customer_credit_dict"):
-            if row["type"] == "Invoice" and row["credit_to_redeem"]:
-                outstanding_invoice = frappe.get_doc(
-                    "Sales Invoice", row["credit_origin"]
-                )
+            if row["credit_to_redeem"]:
+                # Handle Invoice credits (Return Credits)
+                if row["type"] == "Invoice":
+                    outstanding_invoice = frappe.get_doc(
+                        "Sales Invoice", row["credit_origin"]
+                    )
 
-                jv_doc = frappe.get_doc(
-                    {
-                        "doctype": "Journal Entry",
-                        "voucher_type": "Journal Entry",
-                        "posting_date": today,
-                        "company": invoice_doc.company,
+                    jv_doc = frappe.get_doc(
+                        {
+                            "doctype": "Journal Entry",
+                            "voucher_type": "Journal Entry",
+                            "posting_date": today,
+                            "company": invoice_doc.company,
+                        }
+                    )
+
+                    jv_debit_entry = {
+                        "account": outstanding_invoice.debit_to,
+                        "party_type": "Customer",
+                        "party": invoice_doc.customer,
+                        "reference_type": "Sales Invoice",
+                        "reference_name": outstanding_invoice.name,
+                        "debit_in_account_currency": row["credit_to_redeem"],
+                        "cost_center": cost_center,
                     }
-                )
 
-                jv_debit_entry = {
-                    "account": outstanding_invoice.debit_to,
-                    "party_type": "Customer",
-                    "party": invoice_doc.customer,
-                    "reference_type": "Sales Invoice",
-                    "reference_name": outstanding_invoice.name,
-                    "debit_in_account_currency": row["credit_to_redeem"],
-                    "cost_center": cost_center,
-                }
+                    jv_credit_entry = {
+                        "account": invoice_doc.debit_to,
+                        "party_type": "Customer",
+                        "party": invoice_doc.customer,
+                        "reference_type": "Sales Invoice",
+                        "reference_name": invoice_doc.name,
+                        "credit_in_account_currency": row["credit_to_redeem"],
+                        "cost_center": cost_center,
+                    }
 
-                jv_credit_entry = {
-                    "account": invoice_doc.debit_to,
-                    "party_type": "Customer",
-                    "party": invoice_doc.customer,
-                    "reference_type": "Sales Invoice",
-                    "reference_name": invoice_doc.name,
-                    "credit_in_account_currency": row["credit_to_redeem"],
-                    "cost_center": cost_center,
-                }
+                    jv_doc.append("accounts", jv_debit_entry)
+                    jv_doc.append("accounts", jv_credit_entry)
 
-                jv_doc.append("accounts", jv_debit_entry)
-                jv_doc.append("accounts", jv_credit_entry)
+                    jv_doc.flags.ignore_permissions = True
+                    frappe.flags.ignore_account_permission = True
+                    jv_doc.set_missing_values()
+                    jv_doc.save()
+                    jv_doc.submit()
+                
+                # Handle Journal Entry credits - Direct Update (Reconciliation Style)
+                elif row["type"] == "Journal Entry":
+                    # Find the customer credit account entry in the original JE
+                    je_account = frappe.db.sql("""
+                        SELECT 
+                            jea.name,
+                            jea.parent,
+                            jea.account,
+                            jea.credit_in_account_currency,
+                            jea.cost_center
+                        FROM `tabJournal Entry Account` jea
+                        INNER JOIN `tabJournal Entry` je ON je.name = jea.parent
+                        WHERE 
+                            je.docstatus = 1
+                            AND jea.parent = %(journal_entry)s
+                            AND jea.party_type = 'Customer'
+                            AND jea.party = %(customer)s
+                            AND jea.credit_in_account_currency > 0
+                            AND (jea.reference_name IS NULL OR jea.reference_name = '')
+                        LIMIT 1
+                    """, {
+                        "journal_entry": row["credit_origin"],
+                        "customer": invoice_doc.customer
+                    }, as_dict=1)
+                    
+                    if not je_account:
+                        frappe.throw(
+                            _("Could not find unallocated customer credit in Journal Entry {0}").format(
+                                row["credit_origin"]
+                            )
+                        )
+                    
+                    je_account = je_account[0]
+                    credit_amount = je_account.credit_in_account_currency
+                    if flt(row["credit_to_redeem"]) >= flt(credit_amount):
+                    
+                        reconcile_entry = frappe._dict({
+                            # SOURCE (existing Journal Entry)
+                            "voucher_type": "Journal Entry",
+                            "voucher_no": je_account.parent,          
+                            "voucher_detail_no": je_account.name,     
+                    
+                            # TARGET (Sales Invoice)
+                            "against_voucher_type": "Sales Invoice",
+                            "against_voucher": invoice_doc.name,
+                    
+                            # Accounting details
+                            "account": invoice_doc.debit_to,
+                            "party_type": "Customer",
+                            "party": invoice_doc.customer,
+                    
+                            # Customer credit = credit side
+                            "dr_or_cr": "credit_in_account_currency",
+                    
+                            # Amounts
+                            "allocated_amount": flt(row["credit_to_redeem"]),
+                            "unreconciled_amount": flt(credit_amount),
+                            "unadjusted_amount": flt(credit_amount),
+                    
+                            # Required defaults
+                            "exchange_rate": 1,
+                            "cost_center": je_account.cost_center,
+                            "is_advance": 0,
+                        })
+                    
+                        reconcile_against_document([reconcile_entry])                    
+                        
+                    else:
+                        # Partial redemption - need to split the entry
+                        # This requires cancel and amend approach
+                        original_jv = frappe.get_doc("Journal Entry", row["credit_origin"])
+                        
+                        # Create amendment
+                        amended_jv = frappe.copy_doc(original_jv)
+                        amended_jv.amended_from = original_jv.name
+                        
+                        # Update the accounts
+                        allocated_entry = None
+                        for acc in amended_jv.accounts:
+                            if (acc.party_type == "Customer" and 
+                                acc.party == invoice_doc.customer and 
+                                flt(acc.credit_in_account_currency) > 0):
+                                allocated_entry = acc
+                                break
+                        
+                        if allocated_entry:
+                            remaining_credit = flt(allocated_entry.credit_in_account_currency) - flt(row["credit_to_redeem"])
+                            
+                            # Set the allocated amount with reference
+                            allocated_entry.credit_in_account_currency = row["credit_to_redeem"]
+                            allocated_entry.reference_type = "Sales Invoice"
+                            allocated_entry.reference_name = invoice_doc.name
+                            
+                            # Add new entry for remaining credit
+                            new_entry = amended_jv.append("accounts", {})
+                            new_entry.account = allocated_entry.account
+                            new_entry.party_type = "Customer"
+                            new_entry.party = invoice_doc.customer
+                            new_entry.credit_in_account_currency = remaining_credit
+                            new_entry.cost_center = allocated_entry.cost_center
+                        
+                        # Cancel original and submit amended
+                        original_jv.flags.ignore_permissions = True
+                        frappe.flags.ignore_account_permission = True
+                        original_jv.cancel()
+                        
+                        amended_jv.flags.ignore_permissions = True
+                        frappe.flags.ignore_account_permission = True
+                        amended_jv.docstatus = 0
+                        amended_jv.insert()
+                        amended_jv.submit()
+                    
+                    # Commit the changes
+                    frappe.db.commit()
 
-                jv_doc.flags.ignore_permissions = True
-                frappe.flags.ignore_account_permission = True
-                jv_doc.set_missing_values()
-                jv_doc.save()
-                jv_doc.submit()
-
+    # Handle remaining cash payments
     if is_payment_entry and total_cash > 0:
         for payment in payments:
             if not payment.amount:
@@ -812,7 +935,6 @@ def redeeming_customer_credit(
             frappe.flags.ignore_account_permission = True
             payment_entry_doc.save()
             payment_entry_doc.submit()
-
 
 def submit_in_background_job(kwargs):
     invoice = kwargs.get("invoice")
@@ -877,6 +999,40 @@ def get_available_credit(customer, company):
             "credit_to_redeem": 0,
         }
 
+        total_credit.append(row)
+
+    journal_entries = frappe.db.sql(
+        """
+        SELECT 
+            jv.name,
+            SUM(jvd.credit_in_account_currency - jvd.debit_in_account_currency) as unallocated_amount
+        FROM 
+            `tabJournal Entry` jv
+        INNER JOIN 
+            `tabJournal Entry Account` jvd ON jv.name = jvd.parent
+        WHERE 
+            jv.docstatus = 1
+            AND jv.company = %(company)s
+            AND jvd.party_type = 'Customer'
+            AND jvd.party = %(customer)s
+            AND jvd.credit_in_account_currency > 0
+            AND (jvd.reference_name IS NULL OR jvd.reference_name = '')
+        GROUP BY 
+            jv.name
+        HAVING 
+            unallocated_amount > 0
+        """,
+        {"customer": customer, "company": company},
+        as_dict=1,
+    )
+
+    for row in journal_entries:
+        row = {
+            "type": "Journal Entry",
+            "credit_origin": row.name,
+            "total_credit": row.unallocated_amount,
+            "credit_to_redeem": 0,
+        }
         total_credit.append(row)
 
     return total_credit
