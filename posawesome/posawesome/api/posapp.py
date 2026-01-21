@@ -1258,21 +1258,65 @@ def search_available_qty(item_code, company):
     return data
      
 @frappe.whitelist()
+def get_returned_qty_map(invoice_name):
+    returned_items = frappe.db.sql("""
+        SELECT 
+            sii.item_code,
+            ABS(SUM(sii.qty)) AS returned_qty
+        FROM `tabSales Invoice` si
+        INNER JOIN `tabSales Invoice Item` sii
+            ON si.name = sii.parent
+        WHERE
+            si.is_return = 1
+            AND si.docstatus = 1
+            AND si.return_against = %s
+        GROUP BY sii.item_code
+    """, invoice_name, as_dict=True)
+
+    return {d.item_code: d.returned_qty for d in returned_items}
+
+
+@frappe.whitelist()
+def get_returnable_items(invoice_name):
+    original_items = frappe.db.sql("""
+        SELECT
+            name,
+            item_code,
+            item_name,
+            qty,
+            rate,
+            amount,
+            uom,
+            stock_uom,
+            warehouse,
+            income_account,
+            cost_center
+        FROM `tabSales Invoice Item`
+        WHERE parent = %s
+    """, invoice_name, as_dict=True)
+
+    returned_qty_map = get_returned_qty_map(invoice_name)
+
+    items = []
+
+    for item in original_items:
+        returned_qty = returned_qty_map.get(item.item_code, 0)
+        remaining_qty = item.qty - returned_qty
+
+        if remaining_qty > 0:
+            item.qty = remaining_qty      
+            item.amount = remaining_qty * item.rate
+            items.append(item)
+
+    return items
+
+
+     
+@frappe.whitelist()
 def search_invoices_for_return(invoice_name, company):
 
     query = (invoice_name or "").strip()
     if not query:
-        return []
-
-    has_return = frappe.db.exists(
-        "Sales Invoice",
-        {
-            "return_against": query,
-            "is_return": 1,
-            "docstatus": 1
-        }
-    )
-    if has_return:
         return []
 
     customers = frappe.get_list(
@@ -1280,36 +1324,43 @@ def search_invoices_for_return(invoice_name, company):
         or_filters=[
             ["customer_name", "like", f"%{query}%"],
             ["mobile_no", "like", f"%{query}%"],
-            ["custom_customer_id", "like", f"%{query}%"],
         ],
         pluck="name"
     )
 
-    invoices_list = frappe.get_list(
+    invoices = frappe.get_list(
         "Sales Invoice",
         filters={
             "company": company,
             "docstatus": 1,
-            "is_return": 0,        
+            "is_return": 0,
         },
         or_filters=[
             ["name", "like", f"%{query}%"],
             ["customer_name", "like", f"%{query}%"],
             ["customer", "in", customers] if customers else ["name", "=", None],
         ],
-        fields=["name"],
-        limit_page_length=0,
-        order_by="customer"
+        pluck="name",
+        limit_page_length=0
     )
 
-    final_list = []
-    for inv in invoices_list:
-        if not frappe.db.exists("Sales Invoice",
-            {"return_against": inv["name"], "is_return": 1, "docstatus": 1}
-        ):
-            final_list.append(inv)
+    result = []
 
-    return [frappe.get_doc("Sales Invoice", inv["name"]) for inv in final_list]
+    for inv_name in invoices:
+        returnable_items = get_returnable_items(inv_name)
+
+        if not returnable_items:
+            continue
+
+        inv = frappe.get_doc("Sales Invoice", inv_name)
+
+        inv.items = []
+        for item in returnable_items:
+            inv.append("items", item)
+
+        result.append(inv)
+
+    return result
 
 
 @frappe.whitelist()
