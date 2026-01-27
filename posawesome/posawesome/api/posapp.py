@@ -628,6 +628,10 @@ def submit_invoice(invoice, data):
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice_doc.posa_is_printed = 1
+    invoice_doc.redeemed_customer_credit = flt(
+           data.get("redeemed_customer_credit") or 0
+        )       
+
     invoice_doc.save()
 
     if data.get("due_date"):
@@ -681,9 +685,9 @@ def submit_invoice(invoice, data):
         if is_credit_return:
             invoice_doc.is_pos = 0
             invoice_doc.update_outstanding_for_self = 0
-        invoice_doc.redeemed_customer_credit = flt(
-           data.get("redeemed_customer_credit") or 0
-        )       
+        # invoice_doc.redeemed_customer_credit = flt(
+        #    data.get("redeemed_customer_credit") or 0
+        # )       
 
         invoice_doc.submit()
 
@@ -1250,7 +1254,7 @@ def set_customer_info(customer, fieldname, value=""):
 @frappe.whitelist()
 def search_available_qty(item_code, company):
     data = []
-    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name')
+    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name',ignore_permissions=True )
     for warehouse in warehouse_list:
         qty = get_stock_availability(item_code, warehouse.name)
         if qty > 0:
