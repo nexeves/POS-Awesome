@@ -38,6 +38,7 @@
                   background-color="white"
                   hide-details
                   v-model="customer_name"
+                  @input="customer_name = customer_name.toUpperCase()"                 
                 ></v-text-field>
               </v-col>
               <!-- <v-col cols="6">
@@ -70,15 +71,15 @@
                   v-model="email_id"
                 ></v-text-field>
               </v-col> -->
-              <v-col cols="6">
+              <!-- <v-col cols="6">
                 <v-select
                   dense
                   label="Gender"
                   :items="genders"
                   v-model="gender"
                 ></v-select>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-text-field
                   dense
                   color="primary"
@@ -87,8 +88,8 @@
                   hide-details
                   v-model="referral_code"
                 ></v-text-field>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-menu
                   ref="birthday_menu"
                   v-model="birthday_menu"
@@ -119,8 +120,8 @@
                   >
                   </v-date-picker>
                 </v-menu>
-              </v-col>
-              <v-col cols="6">
+              </v-col> -->
+              <!-- <v-col cols="6">
                 <v-autocomplete
                   clearable
                   dense
@@ -135,7 +136,7 @@
                   required
                 >
                 </v-autocomplete>
-              </v-col>
+              </v-col> -->
               <v-col cols="6">
                 <v-autocomplete
                   clearable
@@ -160,6 +161,7 @@
                   background-color="white"
                   hide-details
                   v-model="custom_location"
+                  @input="custom_location = custom_location.toUpperCase()"
                 ></v-text-field>
               </v-col>
               <v-col cols="6" v-if="loyalty_program">
@@ -314,13 +316,13 @@ export default {
         return;
       }
 
-      if (!this.group) {
-        evntBus.$emit('show_mesage', {
-          text: __('Customer group is required.'),
-          color: 'error',
-        });
-        return;
-      }
+      // if (!this.group) {
+      //   evntBus.$emit('show_mesage', {
+      //     text: __('Customer group is required.'),
+      //     color: 'error',
+      //   });
+      //   return;
+      // }
       if (!this.territory) {
         evntBus.$emit('show_mesage', {
           text: __('Customer territory is required.'),

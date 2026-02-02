@@ -646,7 +646,7 @@
 
     <v-card flat class="cards mb-0 mt-3 py-0">
       <v-row align="start" no-gutters>
-        <v-col cols="6">
+        <!-- <v-col cols="6">
           <v-btn
             block
             large
@@ -656,8 +656,8 @@
             :disabled="vaildatPayment"
             >{{ __("Submit") }}</v-btn
           >
-        </v-col>
-        <v-col cols="6" class="pl-1">
+        </v-col> -->
+        <v-col cols="12" class="pl-1">
           <v-btn
             block
             large
