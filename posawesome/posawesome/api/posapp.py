@@ -1112,7 +1112,7 @@ def create_customer(
             "custom_location": custom_location,
         })
 
-        customer.customer_group = customer_group or "All Customer Groups"
+        customer.customer_group = customer_group
         customer.territory = territory or "All Territories"
 
         customer.save(ignore_permissions=True)
