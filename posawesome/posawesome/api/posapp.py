@@ -684,9 +684,6 @@ def submit_invoice(invoice, data):
             and total_paid_amount == 0
         )
 
-        if is_credit_return:
-            invoice_doc.is_pos = 0
-            invoice_doc.update_outstanding_for_self = 0
 
         invoice_doc.submit()
 
@@ -961,7 +958,7 @@ def get_available_credit(customer, company):
         {
             "outstanding_amount": ["<", 0],
             "docstatus": 1,
-            "is_return": 0,
+            "is_return": 1,
             "customer": customer,
             "company": company,
         },
