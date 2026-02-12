@@ -932,24 +932,29 @@ export default {
       });
     },
     set_full_amount(idx) {
+      const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+      const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+        
       this.invoice_doc.payments.forEach((payment) => {
-        payment.amount =
-          payment.idx == idx
-            ? this.invoice_doc.rounded_total || this.invoice_doc.grand_total
-            : 0;
+        payment.amount = payment.idx == idx ? amount_to_pay : 0;
       });
     },
     set_rest_amount(idx) {
-      this.invoice_doc.payments.forEach((payment) => {
-        if (
-          payment.idx == idx &&
-          payment.amount == 0 &&
-          this.diff_payment > 0
-        ) {
-          payment.amount = this.diff_payment;
-        }
-      });
-    },
+        const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+        const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+        const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+        
+        this.invoice_doc.payments.forEach((payment) => {
+          if (
+            payment.idx == idx &&
+            payment.amount == 0 &&
+            this.diff_payment > 0
+          ) {
+            payment.amount = amount_to_pay - this.total_payments;
+          }
+        });
+      },  
     clear_all_amounts() {
       this.invoice_doc.payments.forEach((payment) => {
         payment.amount = 0;
@@ -1427,6 +1432,7 @@ export default {
         ),
         color: "success",
       });
+      this.auto_update_payment_amount();
 
       // Force update to recalculate totals
       this.$forceUpdate();
@@ -1449,8 +1455,28 @@ export default {
       evntBus.$emit("show_payment", "false");
       evntBus.$emit("set_customer_readonly", false);
     },
+    auto_update_payment_amount() {
+      if (!this.invoice_doc || !this.invoice_doc.payments) return;
+      
+      const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+      const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+      
+      // Find the payment that currently has an amount > 0
+      const active_payment = this.invoice_doc.payments.find(p => p.amount > 0);
+      
+      if (active_payment) {
+        // Update the active payment
+        active_payment.amount = amount_to_pay;
+      } else {
+        // If no active payment, use the default one
+        const default_payment = this.invoice_doc.payments.find(p => p.default == 1);
+        if (default_payment) {
+          default_payment.amount = amount_to_pay;
+        }
+      }
+    },
   },
-
   computed: {
     total_payments() {
       let total = parseFloat(this.invoice_doc.loyalty_amount);
