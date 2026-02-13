@@ -182,8 +182,8 @@ export default {
             evntBus.$emit('register_pos_data', r.message);
             evntBus.$emit('set_company', r.message.company);
             vm.close_opening_dialog();
-            is_loading = false;
-          }
+            vm.is_loading = false;
+            window.location.reload(true);          }
         });
     },
     go_desk() {
