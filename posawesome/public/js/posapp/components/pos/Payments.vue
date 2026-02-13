@@ -755,10 +755,10 @@ export default {
     LoyaltyOTPDialog,
   },
   methods: {
-    back_to_invoice() {
-      evntBus.$emit("show_payment", "false");
-      evntBus.$emit("set_customer_readonly", false);
-    },
+    // back_to_invoice() {
+    //   evntBus.$emit("show_payment", "false");
+    //   evntBus.$emit("set_customer_readonly", false);
+    // },
     submit(event, payment_received = false, print = false) {
       if (!this.invoice_doc.is_return && this.total_payments < 0) {
         evntBus.$emit("show_mesage", {
