@@ -1105,6 +1105,9 @@ export default {
       }
       frappe.call({
         method: "posawesome.posawesome.api.posapp.get_sales_person_names",
+        args: {
+          pos_profile: vm.pos_profile.name   
+        },
         callback: function (r) {
           if (r.message) {
             vm.sales_persons = r.message;

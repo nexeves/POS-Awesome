@@ -442,14 +442,22 @@ def get_customer_names(pos_profile):
 
 
 @frappe.whitelist()
-def get_sales_person_names():
-    sales_persons = frappe.get_list(
+def get_sales_person_names(pos_profile=None):
+    if not pos_profile:
+        return []
+
+    sales_persons = frappe.get_all(
         "Sales Person",
-        filters={"enabled": 1},
+        filters={
+            "enabled": 1,
+            "parent_sales_person": pos_profile
+        },
         fields=["name", "sales_person_name"],
         limit_page_length=100000,
     )
+
     return sales_persons
+
 
 
 def add_taxes_from_tax_template(item, parent_doc):
