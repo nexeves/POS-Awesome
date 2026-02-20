@@ -1334,6 +1334,7 @@ def search_invoices_for_return(invoice_name, company):
     customers = frappe.get_list(
         "Customer",
         or_filters=[
+            ["name", "like", f"%{query}%"],
             ["customer_name", "like", f"%{query}%"],
             ["mobile_no", "like", f"%{query}%"],
         ],
