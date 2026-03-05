@@ -5,6 +5,7 @@
     <SalesOrders></SalesOrders>
     <Returns></Returns>
     <NewAddress></NewAddress>
+    <ProfitOneSync></ProfitOneSync>
     <MpesaPayments></MpesaPayments>
     <Variants></Variants>
     <Warehouse></Warehouse>
@@ -79,6 +80,7 @@ import Variants from './Variants.vue';
 import Returns from './Returns.vue';
 import MpesaPayments from './Mpesa-Payments.vue';
 import Warehouse from './Warehouse.vue';
+import ProfitOneSync from './ProfitOneSync.vue';
 
 
 export default {
@@ -107,6 +109,7 @@ export default {
     PosOffers,
     PosCoupons,
     NewAddress,
+    ProfitOneSync,
     Variants,
     MpesaPayments,
     SalesOrders,

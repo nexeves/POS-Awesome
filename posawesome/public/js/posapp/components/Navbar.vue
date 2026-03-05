@@ -81,6 +81,14 @@
                     <v-list-item-title>{{ __('About') }}</v-list-item-title>
                   </v-list-item-content>
                 </v-list-item>
+                <v-list-item @click="open_loyalty_sync">
+                  <v-list-item-icon>
+                    <v-icon>mdi-star-circle</v-icon>
+                  </v-list-item-icon>
+                  <v-list-item-content>
+                    <v-list-item-title>{{ __('Fetch Custome Loyalty') }}</v-list-item-title>
+                  </v-list-item-content>
+                </v-list-item>
               </v-list-item-group>
             </v-list>
           </v-card>
@@ -183,6 +191,9 @@ export default {
     },
     close_shift_dialog() {
       evntBus.$emit('open_closing_dialog');
+    },
+    open_loyalty_sync() {
+      evntBus.$emit('open_loyalty_sync_dialog');
     },
     show_mesage(data) {
       this.snack = true;
