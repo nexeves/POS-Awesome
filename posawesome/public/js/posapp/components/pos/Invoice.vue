@@ -471,6 +471,17 @@
                       disabled
                     ></v-text-field>
                   </v-col>
+                  <v-col cols="4" class="d-flex align-center">
+               <v-btn
+                  color="primary"
+                  small
+                  @click="open_stock(item)"
+                >
+                  Check Warehouse
+                </v-btn>
+                
+                  </v-col>
+
                   <v-col align="center" cols="4" v-if="item.posa_offer_applied">
                     <v-checkbox
                       dense
@@ -676,20 +687,22 @@
               ></v-text-field>
             </v-col>
             <v-col
-              v-if="!pos_profile.posa_use_percentage_discount"
               cols="6"
               class="pa-1"
             >
               <v-text-field
                 :value="formtCurrency(discount_amount)"
                 @change="
-                  setFormatedCurrency(
-                    discount_amount,
-                    'discount_amount',
-                    null,
-                    false,
-                    $event
-                  )
+                  [
+                    setFormatedCurrency(
+                      discount_amount,
+                      'discount_amount',
+                      null,
+                      false,
+                      $event
+                    ),
+                    update_discount_amount_validation()
+                  ]
                 "
                 :rules="[isNumber]"
                 :label="frappe._('Additional Discount')"
@@ -708,7 +721,6 @@
               ></v-text-field>
             </v-col>
             <v-col
-              v-if="pos_profile.posa_use_percentage_discount"
               cols="6"
               class="pa-1"
             >
@@ -898,11 +910,12 @@ export default {
       posting_date: frappe.datetime.nowdate(),
       items_headers: [
         {
-          text: __("Name"),
+          text: __("Item Code"),
           align: "start",
           sortable: true,
-          value: "item_name",
+          value: "item_code",
         },
+        {text:__("Name"),value:"item_name",align:"center"},
         { text: __("QTY"), value: "qty", align: "center" },
         { text: __("UOM"), value: "uom", align: "center" },
         { text: __("Rate"), value: "rate", align: "center" },
@@ -1644,9 +1657,14 @@ export default {
             value = false;
           }
         }
+
         if (this.pos_profile.posa_allow_user_to_edit_additional_discount) {
-          const clac_percentage = (this.discount_amount / this.Total) * 100;
-          if (clac_percentage > this.pos_profile.posa_max_discount_allowed) {
+          const calc_percentage = (this.discount_amount / this.Total) * 100;
+
+          if (
+            this.pos_profile.posa_max_discount_allowed &&
+            calc_percentage > this.pos_profile.posa_max_discount_allowed
+          ) {
             evntBus.$emit("show_mesage", {
               text: __(`The discount should not be higher than {0}%`, [
                 this.pos_profile.posa_max_discount_allowed,
@@ -1655,7 +1673,22 @@ export default {
             });
             value = false;
           }
+        
+          //  STAFF discount validation (NEW)
+          if (
+            this.pos_profile.custom_staff_discount_ &&
+            calc_percentage > this.pos_profile.custom_staff_discount_
+          ) {
+            evntBus.$emit("show_mesage", {
+              text: __(`Staff discount cannot exceed {0}%`, [
+                this.pos_profile.custom_staff_discount_,
+              ]),
+              color: "error",
+            });
+            value = false;
+          }
         }
+
         if (this.invoice_doc.is_return) {
           if (this.subtotal >= 0) {
             evntBus.$emit("show_mesage", {
@@ -1745,6 +1778,13 @@ export default {
 
     open_returns() {
       evntBus.$emit("open_returns", this.pos_profile.company);
+    },
+    open_stock(item) {
+      evntBus.$emit('open_stock', {
+        company: this.pos_profile.company,
+        item_code: item.item_code,
+        current_warehouse: this.pos_profile.warehouse,
+      });
     },
 
     close_payments() {
@@ -1926,14 +1966,64 @@ export default {
       evntBus.$emit("update_customer_price_list", price_list);
     },
     update_discount_umount() {
-      const value = flt(this.additional_discount_percentage);
-      if (value >= -100 && value <= 100) {
-        this.discount_amount = (this.Total * value) / 100;
+      const entered = flt(this.additional_discount_percentage || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      // Exceeds staff discount
+      if (max_allowed > 0 && entered > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+      
+        // reset values
+        this.$nextTick(() => {
+          this.additional_discount_percentage = 0;
+          this.discount_amount = 0;
+        });
+      
+        return;
+      }
+    
+      // ✅ valid discount
+      if (entered >= 0 && entered <= 100) {
+        this.discount_amount = this.flt(
+          (this.Total * entered) / 100,
+          this.currency_precision
+        );
       } else {
         this.additional_discount_percentage = 0;
         this.discount_amount = 0;
       }
     },
+    update_discount_amount_validation() {
+      const total = flt(this.Total || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      if (!total) return;
+    
+      // convert amount → percentage
+      const calc_percentage = this.flt(
+        (flt(this.discount_amount) / total) * 100,
+        this.float_precision
+      );
+    
+      if (max_allowed > 0 && calc_percentage > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+    
+        this.$nextTick(() => {
+          this.discount_amount = 0;
+          this.additional_discount_percentage = 0;
+        });
+        return;
+      }
+    
+      this.additional_discount_percentage = calc_percentage;
+    },
+
 
     calc_prices(item, value, $event) {
       if (event.target.id === "rate") {

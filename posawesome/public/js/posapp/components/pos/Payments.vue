@@ -72,7 +72,7 @@
         </v-row>
         <v-divider></v-divider>
 
-        <div v-if="is_cashback">
+        <div>
           <v-row
             class="pyments px-1 py-0"
             v-for="payment in invoice_doc.payments"
@@ -93,7 +93,7 @@
                 :rules="[isNumber]"
                 :prefix="currencySymbol(invoice_doc.currency)"
                 @focus="set_rest_amount(payment.idx)"
-                :readonly="invoice_doc.is_return ? true : false"
+                :readonly="invoice_doc.is_return && !is_cashback"
               ></v-text-field>
             </v-col>
             <v-col
@@ -646,7 +646,7 @@
 
     <v-card flat class="cards mb-0 mt-3 py-0">
       <v-row align="start" no-gutters>
-        <v-col cols="6">
+        <!-- <v-col cols="6">
           <v-btn
             block
             large
@@ -656,8 +656,8 @@
             :disabled="vaildatPayment"
             >{{ __("Submit") }}</v-btn
           >
-        </v-col>
-        <v-col cols="6" class="pl-1">
+        </v-col> -->
+        <v-col cols="12" class="pl-1">
           <v-btn
             block
             large
@@ -755,10 +755,10 @@ export default {
     LoyaltyOTPDialog,
   },
   methods: {
-    back_to_invoice() {
-      evntBus.$emit("show_payment", "false");
-      evntBus.$emit("set_customer_readonly", false);
-    },
+    // back_to_invoice() {
+    //   evntBus.$emit("show_payment", "false");
+    //   evntBus.$emit("set_customer_readonly", false);
+    // },
     submit(event, payment_received = false, print = false) {
       if (!this.invoice_doc.is_return && this.total_payments < 0) {
         evntBus.$emit("show_mesage", {
@@ -792,18 +792,22 @@ export default {
         }
       }
 
-      if (
-        !this.pos_profile.posa_allow_partial_payment &&
-        this.total_payments <
-          (this.invoice_doc.rounded_total || this.invoice_doc.grand_total)
-      ) {
+      const invoice_total =
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+
+      const write_off = flt(this.invoice_doc.write_off_amount || 0);
+      const paid_amount = flt(this.total_payments);
+
+ // run validation ONLY if NOT a credit sale
+      if (!this.is_credit_sale && (paid_amount + write_off < invoice_total)) {
         evntBus.$emit("show_mesage", {
-          text: `The amount paid is not complete`,
+          text: __("The amount paid is not complete"),
           color: "error",
         });
         frappe.utils.play_sound("error");
         return;
       }
+      
 
       if (
         this.pos_profile.posa_allow_partial_payment &&
@@ -928,24 +932,29 @@ export default {
       });
     },
     set_full_amount(idx) {
+      const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+      const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+        
       this.invoice_doc.payments.forEach((payment) => {
-        payment.amount =
-          payment.idx == idx
-            ? this.invoice_doc.rounded_total || this.invoice_doc.grand_total
-            : 0;
+        payment.amount = payment.idx == idx ? amount_to_pay : 0;
       });
     },
     set_rest_amount(idx) {
-      this.invoice_doc.payments.forEach((payment) => {
-        if (
-          payment.idx == idx &&
-          payment.amount == 0 &&
-          this.diff_payment > 0
-        ) {
-          payment.amount = this.diff_payment;
-        }
-      });
-    },
+        const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+        const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+        const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+        
+        this.invoice_doc.payments.forEach((payment) => {
+          if (
+            payment.idx == idx &&
+            payment.amount == 0 &&
+            this.diff_payment > 0
+          ) {
+            payment.amount = amount_to_pay - this.total_payments;
+          }
+        });
+      },  
     clear_all_amounts() {
       this.invoice_doc.payments.forEach((payment) => {
         payment.amount = 0;
@@ -1096,6 +1105,9 @@ export default {
       }
       frappe.call({
         method: "posawesome.posawesome.api.posapp.get_sales_person_names",
+        args: {
+          pos_profile: vm.pos_profile.name   
+        },
         callback: function (r) {
           if (r.message) {
             vm.sales_persons = r.message;
@@ -1423,6 +1435,7 @@ export default {
         ),
         color: "success",
       });
+      this.auto_update_payment_amount();
 
       // Force update to recalculate totals
       this.$forceUpdate();
@@ -1445,8 +1458,28 @@ export default {
       evntBus.$emit("show_payment", "false");
       evntBus.$emit("set_customer_readonly", false);
     },
+    auto_update_payment_amount() {
+      if (!this.invoice_doc || !this.invoice_doc.payments) return;
+      
+      const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+      const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+      
+      // Find the payment that currently has an amount > 0
+      const active_payment = this.invoice_doc.payments.find(p => p.amount > 0);
+      
+      if (active_payment) {
+        // Update the active payment
+        active_payment.amount = amount_to_pay;
+      } else {
+        // If no active payment, use the default one
+        const default_payment = this.invoice_doc.payments.find(p => p.default == 1);
+        if (default_payment) {
+          default_payment.amount = amount_to_pay;
+        }
+      }
+    },
   },
-
   computed: {
     total_payments() {
       let total = parseFloat(this.invoice_doc.loyalty_amount);
@@ -1659,7 +1692,28 @@ export default {
     },
     is_write_off_change(value) {
       if (value == 1) {
-        this.invoice_doc.write_off_amount = this.diff_payment;
+        const limit = flt(this.pos_profile?.write_off_limit || 0);
+        const diff = flt(this.diff_payment);
+      
+        if (limit > 0 && diff > limit) {
+          evntBus.$emit("show_mesage", {
+            text: `Write Off limit exceeded. Max allowed is ${this.formtCurrency(
+              limit,
+              this.invoice_doc.currency,
+              0
+            )}`,
+            color: "error",
+          });
+        
+          this.$nextTick(() => {
+            this.is_write_off_change = 0;  
+
+
+          });
+          return;
+        }
+      
+        this.invoice_doc.write_off_amount = diff;
         this.invoice_doc.write_off_outstanding_amount_automatically = 1;
       } else {
         this.invoice_doc.write_off_amount = 0;
@@ -1686,6 +1740,20 @@ export default {
         this.invoice_doc.sales_team = [];
       }
     },
-  },
-};
+    is_cashback(value) {
+      if (!value && this.invoice_doc?.is_return) {
+        this.invoice_doc.payments.forEach(payment => {
+          payment.amount = 0;
+          payment.base_amount = 0;
+        });
+
+        this.invoice_doc.is_pos = 0;
+      }
+    }, 
+
+
+
+
+    },
+};  
 </script>
