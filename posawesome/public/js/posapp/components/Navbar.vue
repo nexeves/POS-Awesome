@@ -86,7 +86,7 @@
                     <v-icon>mdi-star-circle</v-icon>
                   </v-list-item-icon>
                   <v-list-item-content>
-                    <v-list-item-title>{{ __('Fetch Custome Loyalty') }}</v-list-item-title>
+                    <v-list-item-title>{{ __('Fetch Customer Loyalty') }}</v-list-item-title>
                   </v-list-item-content>
                 </v-list-item>
               </v-list-item-group>

@@ -12,14 +12,16 @@
       item-text="customer_name"
       item-value="name"
       background-color="white"
-      :no-data-text="__('Customer not found')"
+      :no-data-text="searching ? __('Searching...') : __('No customer found')"
       hide-details
-      :filter="customFilter"
+      no-filter
       :disabled="readonly"
       append-icon="mdi-plus"
       @click:append="new_customer"
       prepend-inner-icon="mdi-account-edit"
       @click:prepend-inner="edit_customer"
+      :search-input.sync="search_input"
+      :loading="searching"
     >
       <template v-slot:item="data">
         <template>
@@ -68,6 +70,10 @@ export default {
     customer: '',
     readonly: false,
     customer_info: {},
+    search_input: '',
+    searching: false,
+    _search_timer: null,
+    _last_search: null,
   }),
 
   components: {
@@ -75,31 +81,27 @@ export default {
   },
 
   methods: {
-    get_customer_names() {
+    fetch_customers(txt) {
       const vm = this;
-      if (this.customers.length > 0) {
-        return;
-      }
-      if (vm.pos_profile.posa_local_storage && localStorage.customer_storage) {
-        vm.customers = JSON.parse(localStorage.getItem('customer_storage'));
-      }
+      if (txt === vm._last_search) return;
+      vm._last_search = txt;
+      vm.searching = true;
       frappe.call({
-        method: 'posawesome.posawesome.api.posapp.get_customer_names',
-        args: {
-          pos_profile: this.pos_profile.pos_profile,
-        },
-        callback: function (r) {
+        method: 'posawesome.posawesome.api.posapp.search_customers_pos',
+        args: { txt: txt || '' },
+        callback(r) {
+          vm.searching = false;
           if (r.message) {
-            vm.customers = r.message;
-            console.info('loadCustomers');
-            if (vm.pos_profile.posa_local_storage) {
-              localStorage.setItem('customer_storage', '');
-              localStorage.setItem(
-                'customer_storage',
-                JSON.stringify(r.message)
-              );
+            const current = vm.customers.find(c => c.name === vm.customer);
+            const results = r.message;
+            if (current && !results.find(c => c.name === current.name)) {
+              results.unshift(current);
             }
+            vm.customers = results;
           }
+        },
+        error() {
+          vm.searching = false;
         },
       });
     },
@@ -109,24 +111,6 @@ export default {
     edit_customer() {
       evntBus.$emit('open_update_customer', this.customer_info);
     },
-    customFilter(item, queryText, itemText) {
-      const textOne = item.customer_name
-        ? item.customer_name.toLowerCase()
-        : '';
-      const textTwo = item.tax_id ? item.tax_id.toLowerCase() : '';
-      const textThree = item.email_id ? item.email_id.toLowerCase() : '';
-      const textFour = item.mobile_no ? item.mobile_no.toLowerCase() : '';
-      const textFifth = item.name.toLowerCase();
-      const searchText = queryText.toLowerCase();
-
-      return (
-        textOne.indexOf(searchText) > -1 ||
-        textTwo.indexOf(searchText) > -1 ||
-        textThree.indexOf(searchText) > -1 ||
-        textFour.indexOf(searchText) > -1 ||
-        textFifth.indexOf(searchText) > -1
-      );
-    },
   },
 
   computed: {},
@@ -135,17 +119,19 @@ export default {
     this.$nextTick(function () {
       evntBus.$on('register_pos_profile', (pos_profile) => {
         this.pos_profile = pos_profile;
-        this.get_customer_names();
+        this.fetch_customers('');
       });
       evntBus.$on('payments_register_pos_profile', (pos_profile) => {
         this.pos_profile = pos_profile;
-        this.get_customer_names();
+        this.fetch_customers('');
       });
       evntBus.$on('set_customer', (customer) => {
         this.customer = customer;
       });
       evntBus.$on('add_customer_to_list', (customer) => {
-        this.customers.push(customer);
+        if (!this.customers.find(c => c.name === customer.name)) {
+          this.customers.unshift(customer);
+        }
       });
       evntBus.$on('set_customer_readonly', (value) => {
         this.readonly = value;
@@ -154,7 +140,7 @@ export default {
         this.customer_info = data;
       });
       evntBus.$on('fetch_customer_details', () => {
-        this.get_customer_names();
+        this.fetch_customers(this.search_input || '');
       });
     });
   },
@@ -162,6 +148,13 @@ export default {
   watch: {
     customer() {
       evntBus.$emit('update_customer', this.customer);
+    },
+    search_input(val) {
+      if (val === this.customer_info?.customer_name) return;
+      clearTimeout(this._search_timer);
+      this._search_timer = setTimeout(() => {
+        this.fetch_customers(val || '');
+      }, 300);
     },
   },
 };
