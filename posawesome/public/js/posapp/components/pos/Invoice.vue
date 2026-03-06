@@ -556,6 +556,41 @@
                       disabled
                     ></v-text-field>
                   </v-col>
+                <v-row class="pb-0 mb-2" align="start">
+                  <v-col cols="12">
+                    <v-autocomplete
+                      dense
+                      clearable
+                      auto-select-first
+                      outlined
+                      color="primary"
+                      :label="frappe._('Sales Person')"
+                      v-model="item.sales_person"
+                      :items="sales_persons"
+                      item-text="sales_person_name"
+                      item-value="name"
+                      background-color="white"
+                      :no-data-text="__('Sales Person not found')"
+                      hide-details
+                      :disabled="readonly"
+                    >
+                      <template v-slot:item="data">
+                        <template>
+                          <v-list-item-content>
+                            <v-list-item-title
+                              class="primary--text subtitle-1"
+                              v-html="data.item.sales_person_name"
+                            ></v-list-item-title>
+                            <v-list-item-subtitle
+                              v-if="data.item.sales_person_name != data.item.name"
+                              v-html="`ID: ${data.item.name}`"
+                            ></v-list-item-subtitle>
+                          </v-list-item-content>
+                        </template>
+                      </template>
+                    </v-autocomplete>
+                  </v-col>
+                </v-row>
                   <v-col
                     cols="8"
                     v-if="item.has_batch_no == 1 || item.batch_no"
@@ -686,7 +721,7 @@
                 color="accent"
               ></v-text-field>
             </v-col>
-            <v-col
+            <!-- <v-col
               cols="6"
               class="pa-1"
             >
@@ -719,7 +754,7 @@
                     : false
                 "
               ></v-text-field>
-            </v-col>
+            </v-col> -->
             <v-col
               cols="6"
               class="pa-1"
@@ -908,6 +943,9 @@ export default {
       selcted_delivery_charges: {},
       invoice_posting_date: false,
       posting_date: frappe.datetime.nowdate(),
+      sales_persons: [],
+      sales_person: "",
+
       items_headers: [
         {
           text: __("Item Code"),
@@ -1120,6 +1158,7 @@ export default {
       new_item.is_free_item = 0;
       new_item.posa_notes = "";
       new_item.posa_delivery_date = "";
+      new_item.sales_person = "";
       new_item.posa_row_id = this.makeid(20);
       if (
         (!this.pos_profile.posa_auto_set_batch && new_item.has_batch_no) ||
@@ -1302,6 +1341,33 @@ export default {
       doc.naming_series = doc.naming_series || this.pos_profile.naming_series;
       doc.customer = this.customer;
       doc.items = this.get_invoice_items();
+      const sales_team_map = {};
+      let total_amount = 0;
+
+      doc.items.forEach((item) => {
+        const amount = flt(item.qty) * flt(item.rate);
+        total_amount += amount;
+      
+        if (item.sales_person) {
+          if (!sales_team_map[item.sales_person]) {
+            sales_team_map[item.sales_person] = 0;
+          }
+          sales_team_map[item.sales_person] += amount;
+        }
+      });
+
+      doc.sales_team = [];
+
+      Object.keys(sales_team_map).forEach((sp) => {
+        const contribution = sales_team_map[sp];
+        const percent = (contribution / total_amount) * 100;
+      
+        doc.sales_team.push({
+          doctype: "Sales Team",
+          sales_person: sp,
+          allocated_percentage: percent,
+        });
+      });
       doc.total = this.subtotal;
       doc.discount_amount = flt(this.discount_amount);
       doc.additional_discount_percentage = flt(
@@ -1407,6 +1473,7 @@ export default {
           posa_notes: item.posa_notes,
           posa_delivery_date: item.posa_delivery_date,
           price_list_rate: item.price_list_rate,
+          sales_person: item.sales_person,
         };
         items_list.push(new_item);
       });
@@ -1437,6 +1504,7 @@ export default {
           posa_notes: item.posa_notes,
           posa_delivery_date: item.posa_delivery_date,
           price_list_rate: item.price_list_rate,
+          sales_person: item.sales_person,
         };
         items_list.push(new_item);
       });
@@ -3059,6 +3127,35 @@ export default {
         this.delivery_charges_rate = 0;
       }
     },
+    get_sales_person_names() {
+      const vm = this;
+      if (
+        vm.pos_profile.posa_local_storage &&
+        localStorage.sales_persons_storage
+      ) {
+        vm.sales_persons = JSON.parse(
+          localStorage.getItem("sales_persons_storage")
+        );
+      }
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.get_sales_person_names",
+        args: {
+          pos_profile: vm.pos_profile.name   
+        },
+        callback: function (r) {
+          if (r.message) {
+            vm.sales_persons = r.message;
+            if (vm.pos_profile.posa_local_storage) {
+              localStorage.setItem("sales_persons_storage", "");
+              localStorage.setItem(
+                "sales_persons_storage",
+                JSON.stringify(r.message)
+              );
+            }
+          }
+        },
+      });
+    },
   },
 
   mounted() {
@@ -3074,6 +3171,7 @@ export default {
       this.invoiceType = this.pos_profile.posa_default_sales_order
         ? "Order"
         : "Invoice";
+      this.get_sales_person_names();
     });
     evntBus.$on("add_item", (item) => {
       this.add_item(item);
