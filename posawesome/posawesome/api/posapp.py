@@ -442,6 +442,42 @@ def get_customer_names(pos_profile):
 
 
 @frappe.whitelist()
+def search_customers_pos(txt="", pos_profile=None):
+    txt = (txt or "").strip()
+    if not txt:
+        return frappe.db.sql("""
+            SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
+            FROM `tabCustomer`
+            WHERE disabled = 0
+            ORDER BY modified DESC
+            LIMIT 20
+        """, as_dict=True)
+
+    like = "%" + txt + "%"
+    return frappe.db.sql("""
+        SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
+        FROM `tabCustomer`
+        WHERE disabled = 0
+          AND (
+            `name`          LIKE %(like)s OR
+            `customer_name` LIKE %(like)s OR
+            `mobile_no`     LIKE %(like)s OR
+            `email_id`      LIKE %(like)s OR
+            `tax_id`        LIKE %(like)s
+          )
+        ORDER BY
+            CASE
+                WHEN `name`          = %(exact)s THEN 0
+                WHEN `customer_name` = %(exact)s THEN 1
+                WHEN `name`          LIKE %(like)s THEN 2
+                WHEN `mobile_no`     LIKE %(like)s THEN 3
+                ELSE 4
+            END, modified DESC
+        LIMIT 20
+    """, {"like": like, "exact": txt}, as_dict=True)
+
+
+@frappe.whitelist()
 def get_sales_person_names(pos_profile=None):
     if not pos_profile:
         return []
