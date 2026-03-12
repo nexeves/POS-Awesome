@@ -326,6 +326,20 @@
               :prefix="currencySymbol(invoice_doc.currency)"
             ></v-text-field>
           </v-col>
+          <v-col>
+          <v-text-field
+            dense
+            outlined
+            type="number"
+            step="0.01"
+            color="primary"
+            :label="frappe._('Write Off Amount')"
+            background-color="white"
+            v-model="invoice_doc.write_off_amount"
+            @input="apply_writeoff"
+            :prefix="currencySymbol(invoice_doc.currency)"
+          ></v-text-field>
+          </v-col>
           <v-col
             cols="6"
             v-if="pos_profile.posa_allow_sales_order && invoiceType == 'Order'"
@@ -960,6 +974,45 @@ export default {
         payment.amount = 0;
       });
     },
+    apply_writeoff() {
+    
+      if (!this.invoice_doc) return
+    
+      const adj = this.flt(this.invoice_doc.write_off_amount || 0)
+      const total = this.flt(this.invoice_doc.grand_total)
+    
+      if (adj > total) {
+        this.invoice_doc.write_off_amount = 0
+        return
+      }
+    
+      this.invoice_doc.base_write_off_amount = adj
+    
+      // Rounded total is invoice total minus writeoff
+      const rounded = this.flt(total - adj, this.currency_precision)
+    
+      this.invoice_doc.rounded_total = rounded
+    
+      // Calculate how much still needs to be paid
+      const loyalty = this.flt(this.invoice_doc.loyalty_amount) || 0
+      const credit = this.flt(this.redeemed_customer_credit) || 0
+    
+      const amount_to_pay = this.flt(
+        rounded - loyalty - credit,
+        this.currency_precision
+      )
+    
+      const active_payment = this.invoice_doc.payments.find(p => p.amount > 0)
+    
+      if (active_payment) {
+        active_payment.amount = amount_to_pay
+      } else {
+        const default_payment = this.invoice_doc.payments.find(p => p.default == 1)
+        if (default_payment) default_payment.amount = amount_to_pay
+      }
+    
+    },
+
     load_print_page() {
       const print_format =
         this.pos_profile.print_format_for_online ||
