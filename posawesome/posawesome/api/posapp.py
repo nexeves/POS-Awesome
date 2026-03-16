@@ -535,17 +535,6 @@ def update_invoice_from_order(data):
     invoice_doc.update(data)
     invoice_doc.save()
     return invoice_doc
-
-@frappe.whitelist()
-def create_return_invoice(pos_profile):
-    pos = frappe.get_doc("POS Profile", pos_profile)
-    invoice = frappe.new_doc("Sales Invoice")
-    invoice.is_return = 1
-    invoice.update_stock = 1
-    invoice.cost_center = pos.cost_center
-    invoice.set_warehouse = pos.warehouse
-    invoice.save(ignore_permissions=True)
-    return invoice.name
     
 @frappe.whitelist()
 def update_invoice(data):
