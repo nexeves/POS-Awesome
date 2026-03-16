@@ -536,7 +536,17 @@ def update_invoice_from_order(data):
     invoice_doc.save()
     return invoice_doc
 
-
+@frappe.whitelist()
+def create_return_invoice(pos_profile):
+    pos = frappe.get_doc("POS Profile", pos_profile)
+    invoice = frappe.new_doc("Sales Invoice")
+    invoice.is_return = 1
+    invoice.update_stock = 1
+    invoice.cost_center = pos.cost_center
+    invoice.set_warehouse = pos.warehouse
+    invoice.save(ignore_permissions=True)
+    return invoice.name
+    
 @frappe.whitelist()
 def update_invoice(data):
     data = json.loads(data)
@@ -887,7 +897,7 @@ def get_available_credit(customer, company):
         {
             "outstanding_amount": ["<", 0],
             "docstatus": 1,
-            "is_return": 0,
+            # "is_return": 0,
             "customer": customer,
             "company": company,
         },
