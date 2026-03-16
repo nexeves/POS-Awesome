@@ -142,13 +142,23 @@
               no-title
               scrollable
               color="primary"
+              :max="frappe.datetime.add_days(frappe.datetime.now_date(true), 7)"
+              @input="invoice_posting_date = false"
+            >
+            </v-date-picker>
+
+            <!-- <v-date-picker
+              v-model="posting_date"
+              no-title
+              scrollable
+              color="primary"
               :min="
                 frappe.datetime.add_days(frappe.datetime.now_date(true), -7)
               "
               :max="frappe.datetime.add_days(frappe.datetime.now_date(true), 7)"
               @input="invoice_posting_date = false"
             >
-            </v-date-picker>
+            </v-date-picker> -->            
           </v-menu>
         </v-col>
       </v-row>
