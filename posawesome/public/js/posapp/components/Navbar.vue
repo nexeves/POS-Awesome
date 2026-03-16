@@ -25,6 +25,10 @@
       <v-btn style="cursor: unset" text color="primary">
         <span right>{{ pos_profile.name }}</span>
       </v-btn>
+      <v-btn text color="primary" @click="go_sales_invoice">
+      <v-icon left>mdi-file-document-outline</v-icon>
+        Return Invoice
+      </v-btn>
       <div class="text-center">
         <v-menu offset-y>
           <template v-slot:activator="{ on, attrs }">
@@ -178,6 +182,26 @@ export default {
     changePage(key) {
       this.$emit('changePage', key);
     },
+
+    go_sales_invoice() {
+      const cost_center = this.pos_profile.cost_center || '';
+      const warehouse = this.pos_profile.warehouse || '';
+    
+      localStorage.setItem('posa_return_invoice', '1');  // ADD THIS
+    
+      let params = new URLSearchParams({
+        ...(cost_center && { cost_center }),
+        ...(warehouse && { set_warehouse: warehouse }),
+      });
+    
+      window.open(
+        frappe.urllib.get_base_url() +
+        '/app/sales-invoice/new-sales-invoice?' +
+        params.toString(),
+        '_blank'
+      );
+    },
+
     go_desk() {
       frappe.set_route('/');
       location.reload();
