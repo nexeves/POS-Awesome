@@ -442,14 +442,58 @@ def get_customer_names(pos_profile):
 
 
 @frappe.whitelist()
-def get_sales_person_names():
-    sales_persons = frappe.get_list(
+def search_customers_pos(txt="", pos_profile=None):
+    txt = (txt or "").strip()
+    if not txt:
+        return frappe.db.sql("""
+            SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
+            FROM `tabCustomer`
+            WHERE disabled = 0
+            ORDER BY modified DESC
+            LIMIT 20
+        """, as_dict=True)
+
+    like = "%" + txt + "%"
+    return frappe.db.sql("""
+        SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
+        FROM `tabCustomer`
+        WHERE disabled = 0
+          AND (
+            `name`          LIKE %(like)s OR
+            `customer_name` LIKE %(like)s OR
+            `mobile_no`     LIKE %(like)s OR
+            `email_id`      LIKE %(like)s OR
+            `tax_id`        LIKE %(like)s
+          )
+        ORDER BY
+            CASE
+                WHEN `name`          = %(exact)s THEN 0
+                WHEN `customer_name` = %(exact)s THEN 1
+                WHEN `name`          LIKE %(like)s THEN 2
+                WHEN `mobile_no`     LIKE %(like)s THEN 3
+                ELSE 4
+            END, modified DESC
+        LIMIT 20
+    """, {"like": like, "exact": txt}, as_dict=True)
+
+
+@frappe.whitelist()
+def get_sales_person_names(pos_profile=None):
+    if not pos_profile:
+        return []
+
+    sales_persons = frappe.get_all(
         "Sales Person",
-        filters={"enabled": 1},
+        filters={
+            "enabled": 1,
+            "parent_sales_person": pos_profile
+        },
         fields=["name", "sales_person_name"],
         limit_page_length=100000,
     )
+
     return sales_persons
+
 
 
 def add_taxes_from_tax_template(item, parent_doc):
@@ -491,8 +535,7 @@ def update_invoice_from_order(data):
     invoice_doc.update(data)
     invoice_doc.save()
     return invoice_doc
-
-
+    
 @frappe.whitelist()
 def update_invoice(data):
     data = json.loads(data)
@@ -508,6 +551,7 @@ def update_invoice(data):
 
     if invoice_doc.is_return and invoice_doc.return_against:
         ref_doc = frappe.get_cached_doc(invoice_doc.doctype, invoice_doc.return_against)
+        invoice_doc.update_outstanding_for_self=0
         if not ref_doc.update_stock:
             invoice_doc.update_stock = 0
         if len(invoice_doc.payments) == 0:
@@ -627,6 +671,10 @@ def submit_invoice(invoice, data):
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice_doc.posa_is_printed = 1
+    invoice_doc.redeemed_customer_credit = flt(
+           data.get("redeemed_customer_credit") or 0
+        )       
+
     invoice_doc.save()
 
     if data.get("due_date"):
@@ -680,6 +728,9 @@ def submit_invoice(invoice, data):
         if is_credit_return:
             invoice_doc.is_pos = 0
             invoice_doc.update_outstanding_for_self = 0
+        # invoice_doc.redeemed_customer_credit = flt(
+        #    data.get("redeemed_customer_credit") or 0
+        # )       
 
         invoice_doc.submit()
 
@@ -835,7 +886,7 @@ def get_available_credit(customer, company):
         {
             "outstanding_amount": ["<", 0],
             "docstatus": 1,
-            "is_return": 0,
+            # "is_return": 0,
             "customer": customer,
             "company": company,
         },
@@ -1052,10 +1103,11 @@ def get_stock_availability(item_code, warehouse):
 
 @frappe.whitelist()
 def create_customer(
-    customer_id,
-    customer_name,
-    company,
-    pos_profile_doc,
+    customer_id=None,
+    custom_customer_id=None,  
+    customer_name=None,
+    company=None,
+    pos_profile_doc=None,
     tax_id=None,
     mobile_no=None,
     email_id=None,
@@ -1065,57 +1117,76 @@ def create_customer(
     territory=None,
     customer_type=None,
     gender=None,
+    custom_location=None,
+
+    
     method="create",
 ):
     pos_profile = json.loads(pos_profile_doc)
-    if method == "create":
-        is_exist = frappe.db.exists("Customer", {"customer_name": customer_name})
-        if pos_profile.get("posa_allow_duplicate_customer_names") or not is_exist:
-            customer = frappe.get_doc(
-                {
-                    "doctype": "Customer",
-                    "customer_name": customer_name,
-                    "posa_referral_company": company,
-                    "tax_id": tax_id,
-                    "mobile_no": mobile_no,
-                    "email_id": email_id,
-                    "posa_referral_code": referral_code,
-                    "posa_birthday": birthday,
-                    "customer_type": customer_type,
-                    "gender": gender,
-                }
-            )
-            if customer_group:
-                customer.customer_group = customer_group
-            else:
-                customer.customer_group = "All Customer Groups"
-            if territory:
-                customer.territory = territory
-            else:
-                customer.territory = "All Territories"
-            customer.save()
-            return customer
-        else:
-            frappe.throw(_("Customer already exists"))
 
+    if not customer_id:
+        customer_id = custom_customer_id
+
+    if not customer_id:
+        frappe.throw(_("Customer ID is required"))
+
+ 
+    if method == "create":
+
+        is_exist = frappe.db.exists(
+            "Customer",
+            {"custom_customer_id": customer_id}
+        )
+        if is_exist:
+            frappe.throw(_("Customer ID already exists"))
+
+        customer = frappe.get_doc({
+            "doctype": "Customer",
+            "customer_name": customer_name,
+            "custom_customer_id": customer_id, 
+            "posa_referral_company": company,
+            "tax_id": tax_id,
+            "mobile_no": mobile_no,
+            "email_id": email_id,
+            "posa_referral_code": referral_code,
+            "posa_birthday": birthday,
+            "customer_type": customer_type,
+            "gender": gender,
+            "custom_location": custom_location,
+        })
+
+        customer.customer_group = customer_group
+        customer.territory = territory or "All Territories"
+
+        customer.save(ignore_permissions=True)
+        return customer
+
+ 
     elif method == "update":
+
         customer_doc = frappe.get_doc("Customer", customer_id)
+
         customer_doc.customer_name = customer_name
+        customer_doc.custom_customer_id = customer_id   
         customer_doc.posa_referral_company = company
         customer_doc.tax_id = tax_id
         customer_doc.posa_referral_code = referral_code
         customer_doc.posa_birthday = birthday
         customer_doc.customer_type = customer_type
-        customer_doc.territory = territory
         customer_doc.customer_group = customer_group
+        customer_doc.territory = territory
         customer_doc.gender = gender
-        customer_doc.save()
+        customer_doc.custom_location = custom_location
+
+
+        customer_doc.save(ignore_permissions=True)
+
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
         if email_id != customer_doc.email_id:
             set_customer_info(customer_doc.name, "email_id", email_id)
-        return customer_doc
 
+        return customer_doc
 
 @frappe.whitelist()
 def get_items_from_barcode(selling_price_list, currency, barcode):
@@ -1226,12 +1297,67 @@ def set_customer_info(customer, fieldname, value=""):
 @frappe.whitelist()
 def search_available_qty(item_code, company):
     data = []
-    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name')
+    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name',ignore_permissions=True )
     for warehouse in warehouse_list:
         qty = get_stock_availability(item_code, warehouse.name)
         if qty > 0:
             data.append ({ 'warehouse': warehouse.name, 'qty': qty})
     return data
+     
+@frappe.whitelist()
+def get_returned_qty_map(invoice_name):
+    returned_items = frappe.db.sql("""
+        SELECT 
+            sii.item_code,
+            ABS(SUM(sii.qty)) AS returned_qty
+        FROM `tabSales Invoice` si
+        INNER JOIN `tabSales Invoice Item` sii
+            ON si.name = sii.parent
+        WHERE
+            si.is_return = 1
+            AND si.docstatus = 1
+            AND si.return_against = %s
+        GROUP BY sii.item_code
+    """, invoice_name, as_dict=True)
+
+    return {d.item_code: d.returned_qty for d in returned_items}
+
+
+@frappe.whitelist()
+def get_returnable_items(invoice_name):
+    original_items = frappe.db.sql("""
+        SELECT
+            name,
+            item_code,
+            item_name,
+            qty,
+            rate,
+            amount,
+            uom,
+            stock_uom,
+            warehouse,
+            income_account,
+            cost_center
+        FROM `tabSales Invoice Item`
+        WHERE parent = %s
+    """, invoice_name, as_dict=True)
+
+    returned_qty_map = get_returned_qty_map(invoice_name)
+
+    items = []
+
+    for item in original_items:
+        returned_qty = returned_qty_map.get(item.item_code, 0)
+        remaining_qty = item.qty - returned_qty
+
+        if remaining_qty > 0:
+            item.qty = remaining_qty      
+            item.amount = remaining_qty * item.rate
+            items.append(item)
+
+    return items
+
+
      
 @frappe.whitelist()
 def search_invoices_for_return(invoice_name, company):
@@ -1240,51 +1366,49 @@ def search_invoices_for_return(invoice_name, company):
     if not query:
         return []
 
-    has_return = frappe.db.exists(
-        "Sales Invoice",
-        {
-            "return_against": query,
-            "is_return": 1,
-            "docstatus": 1
-        }
-    )
-    if has_return:
-        return []
-
     customers = frappe.get_list(
         "Customer",
         or_filters=[
+            ["name", "like", f"%{query}%"],
             ["customer_name", "like", f"%{query}%"],
             ["mobile_no", "like", f"%{query}%"],
         ],
         pluck="name"
     )
 
-    invoices_list = frappe.get_list(
+    invoices = frappe.get_list(
         "Sales Invoice",
         filters={
             "company": company,
             "docstatus": 1,
-            "is_return": 0,        
+            "is_return": 0,
         },
         or_filters=[
             ["name", "like", f"%{query}%"],
             ["customer_name", "like", f"%{query}%"],
             ["customer", "in", customers] if customers else ["name", "=", None],
         ],
-        fields=["name"],
-        limit_page_length=0,
-        order_by="customer"
+        pluck="name",
+        limit_page_length=0
     )
 
-    final_list = []
-    for inv in invoices_list:
-        if not frappe.db.exists("Sales Invoice",
-            {"return_against": inv["name"], "is_return": 1, "docstatus": 1}
-        ):
-            final_list.append(inv)
+    result = []
 
-    return [frappe.get_doc("Sales Invoice", inv["name"]) for inv in final_list]
+    for inv_name in invoices:
+        returnable_items = get_returnable_items(inv_name)
+
+        if not returnable_items:
+            continue
+
+        inv = frappe.get_doc("Sales Invoice", inv_name)
+
+        inv.items = []
+        for item in returnable_items:
+            inv.append("items", item)
+
+        result.append(inv)
+
+    return result
 
 
 @frappe.whitelist()
@@ -1349,7 +1473,9 @@ def get_offers(profile):
         "valid_from": date,
         "valid_upto": date,
     }
-    data = frappe.db.sql(
+    
+    # Get parent offer data
+    offers_data = frappe.db.sql(
         """
         SELECT *
         FROM `tabPOS Offer`
@@ -1360,11 +1486,19 @@ def get_offers(profile):
         (warehouse is NULL OR warehouse  = '' OR  warehouse = %(warehouse)s) AND
         (valid_from is NULL OR valid_from  = '' OR  valid_from <= %(valid_from)s) AND
         (valid_upto is NULL OR valid_from  = '' OR  valid_upto >= %(valid_upto)s)
-    """,
+        """,
         values=values,
         as_dict=1,
     )
-    return data
+    
+    # Load each offer as a full document to include child tables
+    offers_with_children = []
+    for offer_row in offers_data:
+        offer_doc = frappe.get_doc("POS Offer", offer_row.name)
+        offer_dict = offer_doc.as_dict()
+        offers_with_children.append(offer_dict)
+    
+    return offers_with_children
 
 
 @frappe.whitelist()
@@ -1746,6 +1880,7 @@ def get_customer_info(customer):
     res["posa_discount"] = customer.posa_discount
     res["name"] = customer.name
     res["customer_name"] = customer.customer_name
+    res["custom_location"]=customer.custom_location
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )

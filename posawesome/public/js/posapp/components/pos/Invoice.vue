@@ -142,13 +142,23 @@
               no-title
               scrollable
               color="primary"
+              :max="frappe.datetime.add_days(frappe.datetime.now_date(true), 7)"
+              @input="invoice_posting_date = false"
+            >
+            </v-date-picker>
+
+            <!-- <v-date-picker
+              v-model="posting_date"
+              no-title
+              scrollable
+              color="primary"
               :min="
                 frappe.datetime.add_days(frappe.datetime.now_date(true), -7)
               "
               :max="frappe.datetime.add_days(frappe.datetime.now_date(true), 7)"
               @input="invoice_posting_date = false"
             >
-            </v-date-picker>
+            </v-date-picker> -->            
           </v-menu>
         </v-col>
       </v-row>
@@ -181,7 +191,7 @@
         </v-col>
       </v-row>
 
-      <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
+      <div class="my-0 py-0 overflow-y-auto" style="max-height: 50vh">
         <template @mouseover="style = 'cursor: pointer'">
           <v-data-table
             :headers="items_headers"
@@ -556,6 +566,41 @@
                       disabled
                     ></v-text-field>
                   </v-col>
+                <v-row class="pb-0 mb-2" align="start">
+                  <v-col cols="12">
+                    <v-autocomplete
+                      dense
+                      clearable
+                      auto-select-first
+                      outlined
+                      color="primary"
+                      :label="frappe._('Sales Person')"
+                      v-model="item.sales_person"
+                      :items="sales_persons"
+                      item-text="sales_person_name"
+                      item-value="name"
+                      background-color="white"
+                      :no-data-text="__('Sales Person not found')"
+                      hide-details
+                      :disabled="readonly"
+                    >
+                      <template v-slot:item="data">
+                        <template>
+                          <v-list-item-content>
+                            <v-list-item-title
+                              class="primary--text subtitle-1"
+                              v-html="data.item.sales_person_name"
+                            ></v-list-item-title>
+                            <v-list-item-subtitle
+                              v-if="data.item.sales_person_name != data.item.name"
+                              v-html="`ID: ${data.item.name}`"
+                            ></v-list-item-subtitle>
+                          </v-list-item-content>
+                        </template>
+                      </template>
+                    </v-autocomplete>
+                  </v-col>
+                </v-row>
                   <v-col
                     cols="8"
                     v-if="item.has_batch_no == 1 || item.batch_no"
@@ -686,21 +731,23 @@
                 color="accent"
               ></v-text-field>
             </v-col>
-            <v-col
-              v-if="!pos_profile.posa_use_percentage_discount"
+            <!-- <v-col
               cols="6"
               class="pa-1"
             >
               <v-text-field
                 :value="formtCurrency(discount_amount)"
                 @change="
-                  setFormatedCurrency(
-                    discount_amount,
-                    'discount_amount',
-                    null,
-                    false,
-                    $event
-                  )
+                  [
+                    setFormatedCurrency(
+                      discount_amount,
+                      'discount_amount',
+                      null,
+                      false,
+                      $event
+                    ),
+                    update_discount_amount_validation()
+                  ]
                 "
                 :rules="[isNumber]"
                 :label="frappe._('Additional Discount')"
@@ -717,9 +764,8 @@
                     : false
                 "
               ></v-text-field>
-            </v-col>
+            </v-col> -->
             <v-col
-              v-if="pos_profile.posa_use_percentage_discount"
               cols="6"
               class="pa-1"
             >
@@ -907,13 +953,17 @@ export default {
       selcted_delivery_charges: {},
       invoice_posting_date: false,
       posting_date: frappe.datetime.nowdate(),
+      sales_persons: [],
+      sales_person: "",
+
       items_headers: [
         {
-          text: __("Name"),
+          text: __("Item Code"),
           align: "start",
           sortable: true,
-          value: "item_name",
+          value: "item_code",
         },
+        {text:__("Name"),value:"item_name",align:"center"},
         { text: __("QTY"), value: "qty", align: "center" },
         { text: __("UOM"), value: "uom", align: "center" },
         { text: __("Rate"), value: "rate", align: "center" },
@@ -1118,6 +1168,7 @@ export default {
       new_item.is_free_item = 0;
       new_item.posa_notes = "";
       new_item.posa_delivery_date = "";
+      new_item.sales_person = "";
       new_item.posa_row_id = this.makeid(20);
       if (
         (!this.pos_profile.posa_auto_set_batch && new_item.has_batch_no) ||
@@ -1300,6 +1351,33 @@ export default {
       doc.naming_series = doc.naming_series || this.pos_profile.naming_series;
       doc.customer = this.customer;
       doc.items = this.get_invoice_items();
+      const sales_team_map = {};
+      let total_amount = 0;
+
+      doc.items.forEach((item) => {
+        const amount = flt(item.qty) * flt(item.rate);
+        total_amount += amount;
+      
+        if (item.sales_person) {
+          if (!sales_team_map[item.sales_person]) {
+            sales_team_map[item.sales_person] = 0;
+          }
+          sales_team_map[item.sales_person] += amount;
+        }
+      });
+
+      doc.sales_team = [];
+
+      Object.keys(sales_team_map).forEach((sp) => {
+        const contribution = sales_team_map[sp];
+        const percent = (contribution / total_amount) * 100;
+      
+        doc.sales_team.push({
+          doctype: "Sales Team",
+          sales_person: sp,
+          allocated_percentage: percent,
+        });
+      });
       doc.total = this.subtotal;
       doc.discount_amount = flt(this.discount_amount);
       doc.additional_discount_percentage = flt(
@@ -1405,6 +1483,7 @@ export default {
           posa_notes: item.posa_notes,
           posa_delivery_date: item.posa_delivery_date,
           price_list_rate: item.price_list_rate,
+          sales_person: item.sales_person,
         };
         items_list.push(new_item);
       });
@@ -1435,6 +1514,7 @@ export default {
           posa_notes: item.posa_notes,
           posa_delivery_date: item.posa_delivery_date,
           price_list_rate: item.price_list_rate,
+          sales_person: item.sales_person,
         };
         items_list.push(new_item);
       });
@@ -1655,9 +1735,14 @@ export default {
             value = false;
           }
         }
+
         if (this.pos_profile.posa_allow_user_to_edit_additional_discount) {
-          const clac_percentage = (this.discount_amount / this.Total) * 100;
-          if (clac_percentage > this.pos_profile.posa_max_discount_allowed) {
+          const calc_percentage = (this.discount_amount / this.Total) * 100;
+
+          if (
+            this.pos_profile.posa_max_discount_allowed &&
+            calc_percentage > this.pos_profile.posa_max_discount_allowed
+          ) {
             evntBus.$emit("show_mesage", {
               text: __(`The discount should not be higher than {0}%`, [
                 this.pos_profile.posa_max_discount_allowed,
@@ -1666,7 +1751,22 @@ export default {
             });
             value = false;
           }
+        
+          //  STAFF discount validation (NEW)
+          if (
+            this.pos_profile.custom_staff_discount_ &&
+            calc_percentage > this.pos_profile.custom_staff_discount_
+          ) {
+            evntBus.$emit("show_mesage", {
+              text: __(`Staff discount cannot exceed {0}%`, [
+                this.pos_profile.custom_staff_discount_,
+              ]),
+              color: "error",
+            });
+            value = false;
+          }
         }
+
         if (this.invoice_doc.is_return) {
           if (this.subtotal >= 0) {
             evntBus.$emit("show_mesage", {
@@ -1944,14 +2044,64 @@ export default {
       evntBus.$emit("update_customer_price_list", price_list);
     },
     update_discount_umount() {
-      const value = flt(this.additional_discount_percentage);
-      if (value >= -100 && value <= 100) {
-        this.discount_amount = (this.Total * value) / 100;
+      const entered = flt(this.additional_discount_percentage || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      // Exceeds staff discount
+      if (max_allowed > 0 && entered > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+      
+        // reset values
+        this.$nextTick(() => {
+          this.additional_discount_percentage = 0;
+          this.discount_amount = 0;
+        });
+      
+        return;
+      }
+    
+      // ✅ valid discount
+      if (entered >= 0 && entered <= 100) {
+        this.discount_amount = this.flt(
+          (this.Total * entered) / 100,
+          this.currency_precision
+        );
       } else {
         this.additional_discount_percentage = 0;
         this.discount_amount = 0;
       }
     },
+    update_discount_amount_validation() {
+      const total = flt(this.Total || 0);
+      const max_allowed = flt(this.pos_profile?.custom_staff_discount_ || 0);
+    
+      if (!total) return;
+    
+      // convert amount → percentage
+      const calc_percentage = this.flt(
+        (flt(this.discount_amount) / total) * 100,
+        this.float_precision
+      );
+    
+      if (max_allowed > 0 && calc_percentage > max_allowed) {
+        evntBus.$emit("show_mesage", {
+          text: __(`Maximum staff discount allowed is ${max_allowed}%`),
+          color: "error",
+        });
+    
+        this.$nextTick(() => {
+          this.discount_amount = 0;
+          this.additional_discount_percentage = 0;
+        });
+        return;
+      }
+    
+      this.additional_discount_percentage = calc_percentage;
+    },
+
 
     calc_prices(item, value, $event) {
       if (event.target.id === "rate") {
@@ -2987,6 +3137,35 @@ export default {
         this.delivery_charges_rate = 0;
       }
     },
+    get_sales_person_names() {
+      const vm = this;
+      if (
+        vm.pos_profile.posa_local_storage &&
+        localStorage.sales_persons_storage
+      ) {
+        vm.sales_persons = JSON.parse(
+          localStorage.getItem("sales_persons_storage")
+        );
+      }
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.get_sales_person_names",
+        args: {
+          pos_profile: vm.pos_profile.name   
+        },
+        callback: function (r) {
+          if (r.message) {
+            vm.sales_persons = r.message;
+            if (vm.pos_profile.posa_local_storage) {
+              localStorage.setItem("sales_persons_storage", "");
+              localStorage.setItem(
+                "sales_persons_storage",
+                JSON.stringify(r.message)
+              );
+            }
+          }
+        },
+      });
+    },
   },
 
   mounted() {
@@ -3002,6 +3181,7 @@ export default {
       this.invoiceType = this.pos_profile.posa_default_sales_order
         ? "Order"
         : "Invoice";
+      this.get_sales_person_names();
     });
     evntBus.$on("add_item", (item) => {
       this.add_item(item);

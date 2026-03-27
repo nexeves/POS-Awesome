@@ -25,6 +25,10 @@
       <v-btn style="cursor: unset" text color="primary">
         <span right>{{ pos_profile.name }}</span>
       </v-btn>
+      <v-btn text color="primary" @click="go_sales_invoice">
+      <v-icon left>mdi-file-document-outline</v-icon>
+        Return Invoice
+      </v-btn>
       <div class="text-center">
         <v-menu offset-y>
           <template v-slot:activator="{ on, attrs }">
@@ -79,6 +83,14 @@
                   </v-list-item-icon>
                   <v-list-item-content>
                     <v-list-item-title>{{ __('About') }}</v-list-item-title>
+                  </v-list-item-content>
+                </v-list-item>
+                <v-list-item @click="open_loyalty_sync">
+                  <v-list-item-icon>
+                    <v-icon>mdi-star-circle</v-icon>
+                  </v-list-item-icon>
+                  <v-list-item-content>
+                    <v-list-item-title>{{ __('Fetch Customer Loyalty') }}</v-list-item-title>
                   </v-list-item-content>
                 </v-list-item>
               </v-list-item-group>
@@ -170,6 +182,26 @@ export default {
     changePage(key) {
       this.$emit('changePage', key);
     },
+
+    go_sales_invoice() {
+      const cost_center = this.pos_profile.cost_center || '';
+      const warehouse = this.pos_profile.warehouse || '';
+    
+      localStorage.setItem('posa_return_invoice', '1');  // ADD THIS
+    
+      let params = new URLSearchParams({
+        ...(cost_center && { cost_center }),
+        ...(warehouse && { set_warehouse: warehouse }),
+      });
+    
+      window.open(
+        frappe.urllib.get_base_url() +
+        '/app/sales-invoice/new-sales-invoice?' +
+        params.toString(),
+        '_blank'
+      );
+    },
+
     go_desk() {
       frappe.set_route('/');
       location.reload();
@@ -183,6 +215,9 @@ export default {
     },
     close_shift_dialog() {
       evntBus.$emit('open_closing_dialog');
+    },
+    open_loyalty_sync() {
+      evntBus.$emit('open_loyalty_sync_dialog');
     },
     show_mesage(data) {
       this.snack = true;
