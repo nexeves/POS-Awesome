@@ -1474,13 +1474,24 @@ export default {
     applyVerifiedLoyaltyPoints(data) {
       this.loyalty_otp_verified = true;
       this.loyalty_amount = data.loyalty_amount;
-
-      // Update invoice doc with loyalty points
       this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
       this.invoice_doc.redeem_loyalty_points = 1;
       this.invoice_doc.loyalty_points =
         this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
 
+      const vm = this;
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.update_invoice",
+        args: {
+          data: vm.invoice_doc,
+        },
+        async: false,
+        callback: function (r) {
+          if (r.message) {
+            vm.invoice_doc = r.message;
+          }
+        },
+      });
       evntBus.$emit("show_mesage", {
         text: this.__(
           "Loyalty points of {0} applied successfully",
@@ -1489,8 +1500,6 @@ export default {
         color: "success",
       });
       this.auto_update_payment_amount();
-
-      // Force update to recalculate totals
       this.$forceUpdate();
     },
 
