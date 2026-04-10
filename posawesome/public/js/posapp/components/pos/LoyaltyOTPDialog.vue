@@ -282,15 +282,20 @@ export default {
         if (response.message && response.message.success) {
           this.otp_verified = true;
           this.stopTimer();
-          
           evntBus.$emit("show_mesage", {
             text: response.message.message,
             color: "success",
           });
+
+          // ADD THIS FOR NEW WORKFLOW
+          evntBus.$emit("loyalty_otp_verified", {
+            customer: this.customer,
+            loyalty_points: this.loyalty_points_to_redeem,
+            loyalty_amount: this.loyalty_amount,
+          });
         } else {
           this.otp_error = response.message.message;
           this.otp_code = "";
-          
           if (this.attempts >= 3) {
             evntBus.$emit("show_mesage", {
               text: this.__("Maximum attempts exceeded. Please request a new OTP."),
