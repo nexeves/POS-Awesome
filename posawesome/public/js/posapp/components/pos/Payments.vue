@@ -514,7 +514,7 @@
             v-if="invoice_doc.is_return && pos_profile.use_cashback"
           >
             <v-radio-group v-model="is_cashback" row class="my-0 py-0" hide-details>
-              <v-radio :label="frappe._('Cashback')" :value="true"></v-radio>
+              <v-radio :label="frappe._('Refund')" :value="true"></v-radio>
               <v-radio :label="frappe._('Exchange')" :value="false"></v-radio>
             </v-radio-group>
           </v-col>
@@ -739,7 +739,7 @@ export default {
     order_delivery_date: false,
     paid_change_rules: [],
     is_return: false,
-    is_cashback: true,
+    is_cashback: false,
     redeem_customer_credit: false,
     customer_credit_dict: [],
     phone_dialog: false,
@@ -875,7 +875,7 @@ export default {
       this.submit_invoice(print);
       this.customer_credit_dict = [];
       this.redeem_customer_credit = false;
-      this.is_cashback = true;
+      this.is_cashback = false;
       this.sales_person = "";
 
       evntBus.$emit("new_invoice", "false");
@@ -1489,7 +1489,7 @@ export default {
 
       total += this.flt(this.redeemed_customer_credit);
 
-      if (!this.is_cashback) total = 0;
+      if (this.invoice_doc && this.invoice_doc.is_return && !this.is_cashback) total = 0;
 
       return this.flt(total, this.currency_precision);
     },
@@ -1617,7 +1617,7 @@ export default {
       if (this.customer != customer) {
         this.customer_credit_dict = [];
         this.redeem_customer_credit = false;
-        this.is_cashback = true;
+        this.is_cashback = false;
       }
     });
     evntBus.$on("set_pos_settings", (data) => {
