@@ -202,7 +202,8 @@ def get_items(
                 has_batch_no,
                 has_serial_no,
                 max_discount,
-                brand
+                brand,
+                custom_size_ 
             FROM
                 `tabItem`
             WHERE
@@ -316,6 +317,7 @@ def get_items(
                     row.update(
                         {
                             "rate": item_price.get("price_list_rate") or 0,
+                            "barcode": item_barcode[0].get("barcode") if item_barcode else None,
                             "currency": item_price.get("currency")
                             or pos_profile.get("currency"),
                             "item_barcode": item_barcode or [],
@@ -324,6 +326,7 @@ def get_items(
                             "batch_no_data": batch_no_data or [],
                             "attributes": attributes or "",
                             "item_attributes": item_attributes or "",
+                            "size": item.get("custom_size_"),
                         }
                     )
                     result.append(row)
