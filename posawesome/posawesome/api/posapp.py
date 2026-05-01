@@ -2009,3 +2009,4 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+    
