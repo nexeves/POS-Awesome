@@ -510,15 +510,13 @@
             ></v-switch>
           </v-col>
           <v-col
-            cols="6"
+            cols="12"
             v-if="invoice_doc.is_return && pos_profile.use_cashback"
           >
-            <v-switch
-              v-model="is_cashback"
-              flat
-              :label="frappe._('Is Cashback')"
-              class="my-0 py-0"
-            ></v-switch>
+            <v-radio-group v-model="is_cashback" row class="my-0 py-0" hide-details>
+              <v-radio :label="frappe._('Refund')" :value="true"></v-radio>
+              <v-radio :label="frappe._('Exchange')" :value="false"></v-radio>
+            </v-radio-group>
           </v-col>
           <v-col cols="6" v-if="is_credit_sale">
             <v-menu
@@ -741,7 +739,7 @@ export default {
     order_delivery_date: false,
     paid_change_rules: [],
     is_return: false,
-    is_cashback: true,
+    is_cashback: false,
     redeem_customer_credit: false,
     customer_credit_dict: [],
     phone_dialog: false,
@@ -877,7 +875,7 @@ export default {
       this.submit_invoice(print);
       this.customer_credit_dict = [];
       this.redeem_customer_credit = false;
-      this.is_cashback = true;
+      this.is_cashback = false;
       this.sales_person = "";
 
       evntBus.$emit("new_invoice", "false");
@@ -927,6 +925,7 @@ export default {
             });
             frappe.utils.play_sound("submit");
             this.addresses = [];
+            window.location.reload();
           }
         },
       });
@@ -1462,7 +1461,7 @@ export default {
 
       total += this.flt(this.redeemed_customer_credit);
 
-      if (!this.is_cashback) total = 0;
+      if (this.invoice_doc && this.invoice_doc.is_return && !this.is_cashback) total = 0;
 
       return this.flt(total, this.currency_precision);
     },
@@ -1590,7 +1589,7 @@ export default {
       if (this.customer != customer) {
         this.customer_credit_dict = [];
         this.redeem_customer_credit = false;
-        this.is_cashback = true;
+        this.is_cashback = false;
       }
     });
     evntBus.$on("set_pos_settings", (data) => {
@@ -1719,6 +1718,14 @@ export default {
         });
 
         this.invoice_doc.is_pos = 0;
+      } else if (value && this.invoice_doc?.is_return) {
+        let cash_payment = this.invoice_doc.payments.find(p => p.mode_of_payment && p.mode_of_payment.toLowerCase().startsWith('cash'));
+        if (cash_payment) {
+          cash_payment.amount = this.flt(
+            this.invoice_doc.rounded_total || this.invoice_doc.grand_total,
+            this.currency_precision
+          );
+        }
       }
     }, 
 
