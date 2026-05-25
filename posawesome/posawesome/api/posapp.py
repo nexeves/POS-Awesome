@@ -312,7 +312,7 @@ def get_items(
                         fields=["attribute", "attribute_value"],
                         filters={"parent": item.item_code, "parentfield": "attributes"},
                     )
-                if posa_display_items_in_stock and (
+                if posa_display_items_in_stock and item.get("is_stock_item") and (
                     not item_stock_qty or item_stock_qty < 0
                 ):
                     pass
