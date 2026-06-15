@@ -947,7 +947,9 @@ export default {
     set_full_amount(idx) {
       const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
       const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
-      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+      const customer_credit =this.flt(this.redeemed_customer_credit) || 0;
+
+      const amount_to_pay = this.flt(invoice_total - loyalty_deduction - customer_credit, this.currency_precision);
         
       this.invoice_doc.payments.forEach((payment) => {
         payment.amount = payment.idx == idx ? amount_to_pay : 0;
@@ -978,7 +980,7 @@ export default {
       if (!this.invoice_doc) return
     
       const adj = this.flt(this.invoice_doc.write_off_amount || 0)
-      const total = this.flt(this.invoice_doc.grand_total)
+      const total = this.flt(this.invoice_doc.rounded_total || 0)
     
       if (adj > total) {
         this.invoice_doc.write_off_amount = 0
@@ -990,7 +992,7 @@ export default {
       // Rounded total is invoice total minus writeoff
       const rounded = this.flt(total - adj, this.currency_precision)
     
-      this.invoice_doc.rounded_total = rounded
+      // this.invoice_doc.rounded_total = rounded
     
       // Calculate how much still needs to be paid
       const loyalty = this.flt(this.invoice_doc.loyalty_amount) || 0
