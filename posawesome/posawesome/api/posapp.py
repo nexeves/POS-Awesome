@@ -628,7 +628,9 @@ def submit_invoice(invoice, data):
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice_doc.posa_is_printed = 1
-    data.get("redeemed_customer_credit") or 0
+    invoice_doc.redeemed_customer_credit = flt(
+           data.get("redeemed_customer_credit") or 0
+        )       
 
     invoice_doc.save()
 
@@ -683,6 +685,7 @@ def submit_invoice(invoice, data):
         if is_credit_return:
             invoice_doc.is_pos = 0
             invoice_doc.update_outstanding_for_self = 0
+        # invoice_doc.redeemed_customer_credit = flt(
         #    data.get("redeemed_customer_credit") or 0
         # )       
 
@@ -692,6 +695,8 @@ def submit_invoice(invoice, data):
         redeeming_customer_credit(
             invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
         )
+        process_customer_refund(invoice_doc, data)
+
 
     return {"name": invoice_doc.name, "status": invoice_doc.docstatus}
 
@@ -715,115 +720,6 @@ def set_batch_nos_for_bundels(doc, warehouse_field, throw=False):
                             "Row #{0}: The batch {1} has only {2} qty. Please select another batch which has {3} qty available or split the row into multiple rows, to deliver/issue from multiple batches"
                         ).format(d.idx, d.batch_no, batch_qty, qty)
                     )
-#     invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
-# ):
-#     today = nowdate()
-
-#     # ✅ Run for both redeem + refund
-#     if data.get("customer_credit_dict"):
-
-#         cost_center = frappe.get_value(
-#             "POS Profile", invoice_doc.pos_profile, "cost_center"
-#         ) or frappe.get_value(
-#             "Company", invoice_doc.company, "cost_center"
-#         )
-
-#         if not cost_center:
-#             frappe.throw(
-#                 _("Cost Center is not set in pos profile {}").format(
-#                     invoice_doc.pos_profile
-#                 )
-#             )
-
-#         for row in data.get("customer_credit_dict"):
-
-#             if row.get("type") != "Invoice":
-#                 continue
-
-#             outstanding_invoice = frappe.get_doc(
-#                 "Sales Invoice", row.get("credit_origin")
-#             )
-
-#             # ============================
-#             # 🔹 REDEEM LOGIC (EXISTING)
-#             # ============================
-#             if row.get("credit_to_redeem"):
-
-#                 redeem_amount = flt(row.get("credit_to_redeem"))
-
-#                 jv_doc = frappe.get_doc({
-#                     "doctype": "Journal Entry",
-#                     "voucher_type": "Journal Entry",
-#                     "posting_date": today,
-#                     "company": invoice_doc.company,
-#                 })
-
-#                 # Debit old invoice
-#                 jv_doc.append("accounts", {
-#                     "account": outstanding_invoice.debit_to,
-#                     "party_type": "Customer",
-#                     "party": invoice_doc.customer,
-#                     "reference_type": "Sales Invoice",
-#                     "reference_name": outstanding_invoice.name,
-#                     "debit_in_account_currency": redeem_amount,
-#                     "cost_center": cost_center,
-#                 })
-
-#                 # Credit current invoice
-#                 jv_doc.append("accounts", {
-#                     "account": invoice_doc.debit_to,
-#                     "party_type": "Customer",
-#                     "party": invoice_doc.customer,
-#                     "reference_type": "Sales Invoice",
-#                     "reference_name": invoice_doc.name,
-#                     "credit_in_account_currency": redeem_amount,
-#                     "cost_center": cost_center,
-#                 })
-
-#                 jv_doc.flags.ignore_permissions = True
-#                 frappe.flags.ignore_account_permission = True
-#                 jv_doc.set_missing_values()
-#                 jv_doc.save()
-#                 jv_doc.submit()
-
-#             # ============================
-#             # 🔹 REFUND LOGIC (NEW)
-#             # ============================
-#             if row.get("refund_amount"):
-
-#                 refund_amount = flt(row.get("refund_amount"))
-
-#                 jv_doc = frappe.get_doc({
-#                     "doctype": "Journal Entry",
-#                     "voucher_type": "Journal Entry",
-#                     "posting_date": today,
-#                     "company": invoice_doc.company,
-#                 })
-
-#                 # Debit customer (clear credit)
-#                 jv_doc.append("accounts", {
-#                     "account": outstanding_invoice.debit_to,
-#                     "party_type": "Customer",
-#                     "party": invoice_doc.customer,
-#                     "reference_type": "Sales Invoice",
-#                     "reference_name": outstanding_invoice.name,
-#                     "debit_in_account_currency": refund_amount,
-#                     "cost_center": cost_center,
-#                 })
-
-#                 # Credit CASH (FIXED ACCOUNT)
-#                 jv_doc.append("accounts", {
-#                     "account": "Karunagappally Cash - FAHI",
-#                     "credit_in_account_currency": refund_amount,
-#                     "cost_center": cost_center,
-#                 })
-
-#                 jv_doc.flags.ignore_permissions = True
-#                 frappe.flags.ignore_account_permission = True
-#                 jv_doc.set_missing_values()
-#                 jv_doc.save()
-#                 jv_doc.submit()
-
 
 def redeeming_customer_credit(
     invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
@@ -923,6 +819,7 @@ def redeeming_customer_credit(
             payment_entry_doc.save()
             payment_entry_doc.submit()
 
+def process_customer_refund(invoice_doc, data):
     today = nowdate()
 
     if not data.get("customer_credit_dict"):
@@ -1002,7 +899,6 @@ def redeeming_customer_credit(
         jv.save()
         jv.submit()
 
-
 def submit_in_background_job(kwargs):
     invoice = kwargs.get("invoice")
     invoice_doc = kwargs.get("invoice_doc")
@@ -1017,6 +913,7 @@ def submit_in_background_job(kwargs):
     redeeming_customer_credit(
         invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
     )
+    process_customer_refund(invoice_doc, data)
 
 
 @frappe.whitelist()

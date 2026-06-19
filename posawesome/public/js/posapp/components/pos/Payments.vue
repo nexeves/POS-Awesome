@@ -623,21 +623,7 @@
                 :prefix="currencySymbol(invoice_doc.currency)"
               ></v-text-field>
             </v-col>
-            <!-- <v-col cols="3" v-if="row.type === 'Invoice'">
-              <v-text-field
-                dense
-                outlined
-                color="warning"
-                :label="frappe._('Refund Amount')"
-                background-color="white"
-                type="number"
-                v-model="row.refund_amount"
-                :prefix="currencySymbol(invoice_doc.currency)"
-                :hint="frappe._('Max: ') + formtCurrency(flt(row.total_credit) - flt(row.credit_to_redeem || 0))"
-                persistent-hint
-                @input="validateRefundAmount(row)"
-              ></v-text-field>
-            </v-col> -->
+
           </v-row>
         </div>
         <v-divider></v-divider>
