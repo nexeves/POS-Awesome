@@ -586,7 +586,30 @@
                 disabled
                 :prefix="currencySymbol(invoice_doc.currency)"
               ></v-text-field>
-            </v-col>
+          <v-text-field
+            v-if="
+              row.type === 'Invoice' &&
+              flt(row.credit_to_redeem || 0) > 0 &&
+
+              flt(row.total_credit) - flt(row.credit_to_redeem || 0) > 0
+            "
+            class="mt-3"
+            dense
+            outlined
+            color="warning"
+            :label="frappe._('Refund Amount')"
+            background-color="white"
+            type="number"
+            v-model="row.refund_amount"
+            :prefix="currencySymbol(invoice_doc.currency)"
+            :hint="
+              frappe._('Max: ') +
+              formtCurrency(flt(row.total_credit) - flt(row.credit_to_redeem || 0))
+            "
+            persistent-hint
+            @input="validateRefundAmount(row)"
+          />
+        </v-col>
             <v-col cols="4">
               <v-text-field
                 dense
@@ -600,6 +623,21 @@
                 :prefix="currencySymbol(invoice_doc.currency)"
               ></v-text-field>
             </v-col>
+            <!-- <v-col cols="3" v-if="row.type === 'Invoice'">
+              <v-text-field
+                dense
+                outlined
+                color="warning"
+                :label="frappe._('Refund Amount')"
+                background-color="white"
+                type="number"
+                v-model="row.refund_amount"
+                :prefix="currencySymbol(invoice_doc.currency)"
+                :hint="frappe._('Max: ') + formtCurrency(flt(row.total_credit) - flt(row.credit_to_redeem || 0))"
+                persistent-hint
+                @input="validateRefundAmount(row)"
+              ></v-text-field>
+            </v-col> -->
           </v-row>
         </div>
         <v-divider></v-divider>
@@ -954,6 +992,24 @@ export default {
         payment.amount = 0;
       });
     },
+
+    validateRefundAmount(row) {
+      if (!row.refund_amount) {
+        row.refund_amount = 0;
+        return;
+      }
+      const remaining = this.flt(row.total_credit) - this.flt(row.credit_to_redeem || 0);
+      if (this.flt(row.refund_amount) > remaining) {
+        evntBus.$emit("show_mesage", {
+          text: this.__("Refund amount cannot exceed remaining credit balance of {0}", [
+            this.formtCurrency(remaining),
+          ]),
+          color: "error",
+        });
+        row.refund_amount = remaining;
+      }
+    },
+
     load_print_page() {
       const print_format =
         this.pos_profile.print_format_for_online ||
