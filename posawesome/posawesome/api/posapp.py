@@ -628,6 +628,10 @@ def submit_invoice(invoice, data):
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice_doc.posa_is_printed = 1
+    invoice_doc.redeemed_customer_credit = flt(
+           data.get("redeemed_customer_credit") or 0
+        )       
+
     invoice_doc.save()
 
     if data.get("due_date"):
@@ -681,15 +685,18 @@ def submit_invoice(invoice, data):
         if is_credit_return:
             invoice_doc.is_pos = 0
             invoice_doc.update_outstanding_for_self = 0
-        invoice_doc.redeemed_customer_credit = flt(
-           data.get("redeemed_customer_credit") or 0
-        )     
+        # invoice_doc.redeemed_customer_credit = flt(
+        #    data.get("redeemed_customer_credit") or 0
+        # )       
+
 
         invoice_doc.submit()
 
         redeeming_customer_credit(
             invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
         )
+        process_customer_refund(invoice_doc, data)
+
 
     return {"name": invoice_doc.name, "status": invoice_doc.docstatus}
 
@@ -713,7 +720,6 @@ def set_batch_nos_for_bundels(doc, warehouse_field, throw=False):
                             "Row #{0}: The batch {1} has only {2} qty. Please select another batch which has {3} qty available or split the row into multiple rows, to deliver/issue from multiple batches"
                         ).format(d.idx, d.batch_no, batch_qty, qty)
                     )
-
 
 def redeeming_customer_credit(
     invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
@@ -813,6 +819,85 @@ def redeeming_customer_credit(
             payment_entry_doc.save()
             payment_entry_doc.submit()
 
+def process_customer_refund(invoice_doc, data):
+    today = nowdate()
+
+    if not data.get("customer_credit_dict"):
+        return
+
+    cost_center = frappe.get_value(
+        "POS Profile", invoice_doc.pos_profile, "cost_center"
+    ) or frappe.get_value(
+        "Company", invoice_doc.company, "cost_center"
+    )
+
+    if not cost_center:
+        frappe.throw(
+            _("Cost Center is not set in pos profile {}").format(
+                invoice_doc.pos_profile
+            )
+        )
+
+    for row in data.get("customer_credit_dict"):
+
+        if row.get("type") != "Invoice" or not row.get("refund_amount"):
+            continue
+
+        refund_amount = flt(row.get("refund_amount"))
+
+        outstanding_invoice = frappe.get_doc(
+            "Sales Invoice", row.get("credit_origin")
+        )
+
+        jv = frappe.get_doc({
+            "doctype": "Journal Entry",
+            "voucher_type": "Journal Entry",
+            "posting_date": today,
+            "company": invoice_doc.company,
+        })
+
+        # 🔹 Debit Customer
+        jv.append("accounts", {
+            "account": outstanding_invoice.debit_to,
+            "party_type": "Customer",
+            "party": invoice_doc.customer,
+            "reference_type": "Sales Invoice",
+            "reference_name": outstanding_invoice.name,
+            "debit_in_account_currency": refund_amount,
+            "cost_center": cost_center,
+        })
+        pos_profile = frappe.get_doc("POS Profile", invoice_doc.pos_profile)
+
+        default_mop = next(
+            (row.mode_of_payment for row in pos_profile.payments if row.default),
+            None
+        )
+
+        if not default_mop:
+            frappe.throw("Default Mode of Payment not configured in POS Profile")
+
+        refund_account = frappe.get_value(
+            "Mode of Payment Account",
+            {
+                "parent": default_mop,
+                "company": invoice_doc.company,
+            },
+            "default_account",
+        )
+
+        # 🔹 Credit Cash
+        jv.append("accounts", {
+            "account": refund_account,
+            "credit_in_account_currency": refund_amount,
+            "cost_center": cost_center,
+        })
+
+        jv.flags.ignore_permissions = True
+        frappe.flags.ignore_account_permission = True
+
+        jv.set_missing_values()
+        jv.save()
+        jv.submit()
 
 def submit_in_background_job(kwargs):
     invoice = kwargs.get("invoice")
@@ -828,6 +913,7 @@ def submit_in_background_job(kwargs):
     redeeming_customer_credit(
         invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
     )
+    process_customer_refund(invoice_doc, data)
 
 
 @frappe.whitelist()
