@@ -1524,6 +1524,7 @@ export default {
 
     get_payments() {
       const payments = [];
+      let has_employee_mop = false;
       this.pos_profile.payments.forEach((payment) => {
         payments.push({
           amount: 0,
@@ -1531,7 +1532,19 @@ export default {
           default: payment.default,
           account: "",
         });
+        if (payment.mode_of_payment === "Employee") {
+          has_employee_mop = true;
+        }
       });
+
+      if (this.customer_info && this.customer_info.customer_group === "Employee" && !has_employee_mop) {
+        payments.push({
+          amount: 0,
+          mode_of_payment: "Employee",
+          default: 0,
+          account: "",
+        });
+      }
       return payments;
     },
 
