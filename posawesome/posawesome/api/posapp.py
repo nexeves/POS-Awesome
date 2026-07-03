@@ -1297,7 +1297,7 @@ def set_customer_info(customer, fieldname, value=""):
 @frappe.whitelist()
 def search_available_qty(item_code, company):
     data = []
-    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0, 'company': company}, 'name',ignore_permissions=True )
+    warehouse_list = frappe.db.get_list("Warehouse",{'is_group': 0}, 'name',ignore_permissions=True )
     for warehouse in warehouse_list:
         qty = get_stock_availability(item_code, warehouse.name)
         if qty > 0:
