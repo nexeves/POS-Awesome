@@ -128,8 +128,6 @@ export default {
     forceUpdateItem() {
       let list_offers = [];
       list_offers = [...this.pos_offers];
-      console.log("from forceUpdateItem");
-      
       this.pos_offers = list_offers;
     },
     makeid(length) {
@@ -151,8 +149,6 @@ export default {
           toRemove.push(pos_offer.row_id);
         }
       });
-      console.log("from updatePosOffers");
-      
       this.removeOffers(toRemove);
       offers.forEach((offer) => {
         const pos_offer = this.pos_offers.find(
@@ -215,15 +211,11 @@ export default {
       });
     },
     removeOffers(offers_id_list) {
-      console.log("from removeOffers ");
-      
       this.pos_offers = this.pos_offers.filter(
         (offer) => !offers_id_list.includes(offer.row_id)
       );
     },
     handelOffers() {
-      console.log('handleoffers');
-      
       const applyedOffers = this.pos_offers.filter(
         (offer) => offer.offer_applied
       );
@@ -275,7 +267,6 @@ export default {
     pos_offers: {
       deep: true,
       handler(pos_offers) {
-        console.log("from watch");
         this.handelOffers();
         this.updateCounters();
         this.updatePosCoupuns();

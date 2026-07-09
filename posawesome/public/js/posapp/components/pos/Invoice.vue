@@ -152,6 +152,47 @@
           </v-menu>
         </v-col>
       </v-row>
+      <v-row align="center" class="items px-2 py-1 mt-0 pt-0">
+        <v-col cols="4" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points')"
+              background-color="white"
+              hide-details
+              :value="parseInt(available_points) || 0"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+        <v-col cols="4" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points Amount')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_points_amount) || 0"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+        <v-col cols="4" class="pb-2">
+          <v-text-field
+              dense
+              outlined
+              color="primary"
+              :label="frappe._('Loyalty Points Amount Redeemable')"
+              background-color="white"
+              hide-details
+              :value="formtFloat(available_points_amount) || 0"
+              :prefix="currencySymbol(invoice_doc.currency)"
+              disabled
+            ></v-text-field>
+        </v-col>
+      </v-row>
 
       <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
         <template @mouseover="style = 'cursor: pointer'">
@@ -261,7 +302,7 @@
                       dense
                       background-color="white"
                       :label="frappe._('UOM')"
-                      v-model="item.stock_uom"
+                      v-model="item.uom"
                       :items="item.item_uoms"
                       outlined
                       item-text="uom"
@@ -921,6 +962,40 @@ export default {
       });
       return this.flt(sum, this.float_precision);
     },
+    available_points() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points) {
+        amount =
+          this.customer_info.loyalty_points;
+      }
+      return amount;
+    },
+    available_points_posting_date() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points_posting_date) {
+        amount =
+          this.customer_info.loyalty_points_posting_date;
+      }
+      return amount;
+    },
+    available_points_posting_date_amount() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points_posting_date) {
+        amount =
+          this.customer_info.loyalty_points_posting_date *
+          this.customer_info.conversion_factor;
+      }
+      return amount;
+    },
+    available_points_amount() {
+      let amount = 0;
+      if (this.customer_info.loyalty_points) {
+        amount =
+          this.customer_info.loyalty_points *
+          this.customer_info.conversion_factor;
+      }
+      return amount;
+    },
   },
 
   methods: {
@@ -1108,7 +1183,6 @@ export default {
     },
 
     new_invoice(data = {}) {
-      console.log("new invoice")
       let old_invoice = null;
       evntBus.$emit("set_customer_readonly", false);
       this.expanded = [];
@@ -1181,9 +1255,7 @@ export default {
       evntBus.$emit("set_pos_coupons", []);
       this.posa_coupons = [];
       this.return_doc = "";
-      console.log('load new order')
       if (!data.name && !data.is_return) {
-        console.log(data)
         this.items = [];
         this.customer = this.pos_profile.customer;
         this.invoice_doc = "";
@@ -1192,7 +1264,6 @@ export default {
         this.invoiceType = "Invoice";
         this.invoiceTypes = ["Invoice", "Order"];
       } else {
-        console.log(data)
         if (data.is_return) {
           evntBus.$emit("set_customer_readonly", true);
           this.invoiceType = "Return";
@@ -1933,8 +2004,6 @@ export default {
     },
 
     calc_item_price(item) {
-      // console.log('calc_item_price');
-      
       if (!item.posa_offer_applied) {
         if (item.price_list_rate) {
           item.rate = item.price_list_rate;
@@ -2143,8 +2212,6 @@ export default {
       });
 
       this.setItemGiveOffer(offers);
-      console.log("from hanleoffer");
-      
       this.updatePosOffers(offers);
     },
 
@@ -2226,7 +2293,7 @@ export default {
       // if (offer.apply_item_code!= null){
       //   qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
       // }
-      if (offer.apply_on == "Item Code"){
+      if (offer.apply_on === "Item Code"){
         qty=this.getTotalQtyOfItem(this.items, offer.item,'qty');
       }
       let min_qty = false;
@@ -2418,7 +2485,6 @@ export default {
                 items.push(item.posa_row_id);
               });
               offer.items = items;
-              offer.given_qty=res.given_qty
               apply_offer = offer;
             }
           }
@@ -2432,9 +2498,6 @@ export default {
     },
 
     updateInvoiceOffers(offers) {
-      console.log("heree offers")
-      console.log(offers)
-      // console.log(this.posa_offers)
       this.posa_offers.forEach((invoiceOffer) => {
         const existOffer = offers.find(
           (offer) => invoiceOffer.row_id == offer.row_id
@@ -2444,14 +2507,10 @@ export default {
         }
       });
       offers.forEach((offer) => {
-        console.log("ofer row", offer.row_id)
         const existOffer = this.posa_offers.find(
           (invoiceOffer) => invoiceOffer.row_id == offer.row_id
         );
-        console.log("invoffer", existOffer)
         if (existOffer) {
-          console.log("existoffer is there")
-          console.log(existOffer)
           existOffer.items = JSON.stringify(offer.items);
           if (
             existOffer.offer === "Give Product" &&
@@ -2539,25 +2598,18 @@ export default {
               }
             });
           } else if (existOffer.offer === "Item Price") {
-            console.log("this is from updateInvoiceOffers11112222!!!!")
-            console.log("1")
             this.ApplyOnPrice(offer);
           } else if (existOffer.offer === "Grand Total") {
             this.ApplyOnTotal(offer);
           }
           this.addOfferToItems(existOffer);
         } else {
-          // console.log("offer is", existOffer.offer)
-          console.log("1")
           this.applyNewOffer(offer);
-          // console.log("is this reaches here!!!", existOffer.offer)
         }
       });
     },
 
     removeApplyOffer(invoiceOffer) {
-      // console.log(invoiceOffer,"invoiceOfferinvoiceOffer");
-      
       if (invoiceOffer.offer === "Item Price") {
         this.RemoveOnPrice(invoiceOffer);
         const index = this.posa_offers.findIndex(
@@ -2593,8 +2645,6 @@ export default {
 
     applyNewOffer(offer) {
       if (offer.offer === "Item Price") {
-        console.log("the offer is", offer.name, offer.offer, offer.apply_on)
-        console.log("this is from applyNewOffer!!!!")
         this.ApplyOnPrice(offer);
       }
       if (offer.offer === "Give Product") {
@@ -2696,7 +2746,6 @@ export default {
       if (offer.apply_item_code!= null){
         qty=this.getTotalQtyOfItem(this.items, offer.apply_item_code,'qty');
       }
-      // console.log("QTY GIVE", qty)
       const new_item = { ...item };
       let match_item = this.items.find(
             (el) => el.item_code == offer.give_item
@@ -2745,19 +2794,10 @@ export default {
     },
 
     ApplyOnPrice(offer) {
-      // console.log("apply on priceeee")
       this.items.forEach((item) => {
-      // console.log("Item codee", item.item_code )
-      // console.log("Offer Item ***", offer.item)
-        if (item.item_code === offer.item || offer.items.includes(item.posa_row_id)) {
-          // console.log("in item.item_code === offer.item || offer.items.includes(item.posa_row_id");
+        if (item.item_code === offer.item || offer.items.includes(item.posa_row_id) ) {
           const item_offers = JSON.parse(item.posa_offers);
-          // console.log(offer.row_id,"offer.row_id");
-          // console.log(item_offers,"item_offers");
-          
           if (!item_offers.includes(offer.row_id)) {
-            // console.log("in !item_offers ");
-            
             if (offer.discount_type === "Rate") {
               item.rate = offer.rate;
             } else if (offer.discount_type === "Discount Percentage") {
@@ -3008,9 +3048,6 @@ export default {
       this.posOffers = data;
     });
     evntBus.$on("update_invoice_offers", (data) => {
-      console.log("hereeeeeeeeeeeee@@@@@");
-      console.log(data);
-      
       this.updateInvoiceOffers(data);
     });
     evntBus.$on("update_invoice_coupons", (data) => {
@@ -3081,8 +3118,6 @@ export default {
     items: {
       deep: true,
       handler(items) {
-        console.log("from items watch");
-        
         this.handelOffers();
         this.$forceUpdate();
       },

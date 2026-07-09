@@ -274,6 +274,22 @@ def submit_closing_shift(closing_shift):
     closing_shift = json.loads(closing_shift)
     closing_shift_doc = frappe.get_doc(closing_shift)
     closing_shift_doc.flags.ignore_permissions = True
+    
+    closing_shift_doc.save()
+    # total_value = 0
+    for currency in closing_shift.get('currencyDenomination', []):
+        closing_shift_doc.append('custom_currency_denomination', {
+                    'denomination': float(currency.get('denomination', 0)),
+                    'count': float(currency.get('count')),
+                    # 'total_value': currency.get('denomination') * currency.get('count'),
+                })
+        
+    #     if denomination is not None and count is not None:
+    #         total_value += float(denomination) * float(count)  # Make sure to convert to float
+
+    # # Now you can set total_value in your closing_shift dictionary
+    # closing_shift['total_value'] = total_value
+    
     closing_shift_doc.save()
     closing_shift_doc.submit()
     return closing_shift_doc.name
