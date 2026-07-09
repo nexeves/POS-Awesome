@@ -53,11 +53,8 @@
                   </v-list-item-content>
                 </v-list-item>
                 <v-list-item
+                  v-if="pos_profile.posa_allow_print_last_invoice"
                   @click="print_last_invoice"
-                  v-if="
-                    pos_profile.posa_allow_print_last_invoice &&
-                    this.last_invoice
-                  "
                 >
                   <v-list-item-icon>
                     <v-icon>mdi-printer</v-icon>
@@ -239,29 +236,44 @@ export default {
       });
     },
     print_last_invoice() {
-      if (!this.last_invoice) return;
-      const print_format =
-        this.pos_profile.print_format_for_online ||
-        this.pos_profile.print_format;
-      const letter_head = this.pos_profile.letter_head || 0;
-      const url =
-        frappe.urllib.get_base_url() +
-        '/printview?doctype=Sales%20Invoice&name=' +
-        this.last_invoice +
-        '&trigger_print=1' +
-        '&format=' +
-        print_format +
-        '&no_letterhead=' +
-        letter_head;
-      const printWindow = window.open(url, 'Print');
-      printWindow.addEventListener(
-        'load',
-        function () {
-          printWindow.print();
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.get_last_invoice",
+        callback: (r) => {
+          if (!r.message) {
+            frappe.msgprint(__('No invoice found.'));
+            return;
+          }
+        
+          const invoice = r.message;
+        
+          const print_format =
+            this.pos_profile.print_format_for_online ||
+            this.pos_profile.print_format;
+        
+          const letter_head = this.pos_profile.letter_head || 0;
+        
+          const url =
+            frappe.urllib.get_base_url() +
+            "/printview?doctype=Sales%20Invoice&name=" +
+            invoice +
+            "&trigger_print=1" +
+            "&format=" +
+            print_format +
+            "&no_letterhead=" +
+            letter_head;
+        
+          const printWindow = window.open(url, "Print");
+        
+          printWindow.addEventListener(
+            "load",
+            function () {
+              printWindow.print();
+            },
+            true
+          );
         },
-        true
-      );
-    },
+      });
+    }
   },
   created: function () {
     this.$nextTick(function () {
