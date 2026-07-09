@@ -546,7 +546,6 @@ def update_invoice(data):
         invoice_doc = frappe.get_doc(data)
 
     invoice_doc.set_missing_values()
-    invoice_doc.calculate_taxes_and_totals()
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
 
