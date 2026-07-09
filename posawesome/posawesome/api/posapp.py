@@ -25,12 +25,14 @@ from erpnext.accounts.doctype.payment_request.payment_request import (
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 from erpnext.accounts.doctype.loyalty_program.loyalty_program import (
     get_loyalty_program_details_with_points,
+    get_loyalty_program_details_with_points_posting_date,
 )
 from posawesome.posawesome.doctype.pos_coupon.pos_coupon import check_coupon_code
 from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
     get_applicable_delivery_charges as _get_applicable_delivery_charges,
 )
 from frappe.utils.caching import redis_cache
+from twilio.rest import Client
 
 
 @frappe.whitelist()
@@ -208,6 +210,7 @@ def get_items(
                 disabled = 0
                     AND is_sales_item = 1
                     AND is_fixed_asset = 0
+                    AND custom_pos_item = 1
                     {condition}
             ORDER BY
                 item_name asc
@@ -912,9 +915,6 @@ def get_items_details(pos_profile, items_data):
             for item in items_data:
                 item_code = item.get("item_code")
                 item_stock_qty = get_stock_availability(item_code, warehouse)
-                stock_uom = frappe.get_value(
-                    "Item", item_code, ["stock_uom"]
-                )
                 has_batch_no, has_serial_no = frappe.get_value(
                     "Item", item_code, ["has_batch_no", "has_serial_no"]
                 )
@@ -967,7 +967,6 @@ def get_items_details(pos_profile, items_data):
                         "actual_qty": item_stock_qty or 0,
                         "has_batch_no": has_batch_no,
                         "has_serial_no": has_serial_no,
-                        "stock_uom": stock_uom
                     }
                 )
 
@@ -1699,8 +1698,7 @@ def get_active_gift_coupons(customer, company):
 def get_customer_info(customer):
     customer = frappe.get_doc("Customer", customer)
 
-    res = {"loyalty_points": None, "conversion_factor": None}
-    res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
+    res = {"loyalty_points": None, "conversion_factor": None, "loyalty_points_posting_date": None}
 
     res["email_id"] = customer.email_id
     res["mobile_no"] = customer.mobile_no
@@ -1719,6 +1717,7 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+    res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
@@ -1727,9 +1726,15 @@ def get_customer_info(customer):
             silent=True,
             include_expired_entry=False,
         )
+        lp_details_posting_date = get_loyalty_program_details_with_points_posting_date(
+            customer.name,
+            customer.loyalty_program,
+            silent=True,
+            include_expired_entry=False,
+        )
         res["loyalty_points"] = lp_details.get("loyalty_points")
         res["conversion_factor"] = lp_details.get("conversion_factor")
-
+        res["loyalty_points_posting_date"] = lp_details_posting_date.get("loyalty_points")
     return res
 
 
@@ -1762,6 +1767,7 @@ def auto_create_items():
                 "is_sales_item": 1,
                 "is_purchase_item": 0,
                 "is_fixed_asset": 0,
+                "custom_pos_item" : 1,
                 "is_sub_contracted_item": 0,
                 "is_pro_applicable": 0,
                 "is_manufactured_item": 0,
@@ -1835,3 +1841,71 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+
+@frappe.whitelist()
+def send_loyalty_otp(customer):
+    if not customer:
+        frappe.throw(_("Customer is required"))
+
+    customer_doc = frappe.get_doc("Customer", customer)
+    mobile_no = customer_doc.mobile_no
+
+    if not mobile_no:
+        frappe.throw(_("Customer Mobile Number is required for OTP verification"))
+
+    mobile_no = mobile_no.replace(" ", "").replace("-", "")
+
+    if not mobile_no.startswith("+"):
+        mobile_no = "+968" + mobile_no
+
+    account_sid = frappe.conf.get("TWILIO_ACCOUNT_SID")
+    auth_token = frappe.conf.get("TWILIO_AUTH_TOKEN")
+    service_sid = frappe.conf.get("TWILIO_SERVICE_SID")
+
+    if not account_sid or not auth_token:
+        frappe.throw(_("Twilio Credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) are missing in site_config.json"))
+
+    try:
+        client = Client(account_sid, auth_token)
+        verification = client.verify.v2.services(service_sid).verifications.create(
+            to=mobile_no, channel="sms"
+        )
+        return {"status": verification.status}
+    except Exception as e:
+        frappe.log_error("Twilio OTP Error", str(e))
+        frappe.throw(_("Failed to send OTP: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def validate_loyalty_otp(customer, otp):
+    if not customer or not otp:
+        frappe.throw(_("Customer and OTP are required"))
+
+    customer_doc = frappe.get_doc("Customer", customer)
+    mobile_no = customer_doc.mobile_no
+    
+    mobile_no = mobile_no.replace(" ", "").replace("-", "")
+
+    if not mobile_no.startswith("+"):
+        mobile_no = "+968" + mobile_no
+
+    account_sid = frappe.conf.get("TWILIO_ACCOUNT_SID")
+    auth_token = frappe.conf.get("TWILIO_AUTH_TOKEN")
+    service_sid = frappe.conf.get("TWILIO_SERVICE_SID")
+
+    if not account_sid or not auth_token:
+        frappe.throw(_("Twilio Credentials are missing"))
+
+    try:
+        client = Client(account_sid, auth_token)
+        verification_check = client.verify.v2.services(service_sid).verification_checks.create(
+            to=mobile_no, code=otp
+        )
+
+        if verification_check.status == "approved":
+            return {"status": "approved"}
+        else:
+            return {"status": "failed", "message": _("Invalid OTP")}
+    except Exception as e:
+        frappe.log_error("Twilio OTP Log", str(e))
+        frappe.throw(_("Failed to validate OTP: {0}").format(str(e)))
