@@ -2006,3 +2006,21 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+
+@frappe.whitelist()
+def get_last_invoice():
+    invoice = frappe.db.sql(
+        """
+        SELECT name
+        FROM `tabSales Invoice`
+        WHERE owner=%s
+          AND docstatus=1
+          AND is_pos=1
+        ORDER BY creation DESC
+        LIMIT 1
+        """,
+        frappe.session.user,
+        as_dict=True,
+    )
+
+    return invoice[0].name if invoice else None
