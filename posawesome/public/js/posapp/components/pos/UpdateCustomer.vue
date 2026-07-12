@@ -37,7 +37,50 @@
             </v-alert>
 
             <v-row>
+<<<<<<< HEAD
               <!-- Mobile first for lookup -->
+=======
+              <v-col cols="12">
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Customer Name') + ' *'"
+                  background-color="white"
+                  hide-details
+                  v-model="customer_name"
+                ></v-text-field>
+              </v-col>
+               <v-col cols="6" >
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Customer Invoice Name')"
+                  background-color="white"
+                  hide-details
+                  v-model="custom_invoice_name"
+                ></v-text-field>
+              </v-col>
+               <v-col cols="6" >
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Vat Number')"
+                  background-color="white"
+                  hide-details
+                  v-model="custom_vat_no"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="6" v-show="false">
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Tax ID')"
+                  background-color="white"
+                  hide-details
+                  v-model="tax_id"
+                ></v-text-field>
+              </v-col>
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
               <v-col cols="6">
                 <v-text-field
                   dense
@@ -50,14 +93,82 @@
                   :loading="lookup_status === 'checking'"
                 ></v-text-field>
               </v-col>
-              <v-col cols="6">
+              <v-col cols="6" v-show="false">
                 <v-text-field
                   dense
                   color="primary"
                   :label="frappe._('Customer ID') + ' *'"
                   background-color="white"
                   hide-details
+<<<<<<< HEAD
                   v-model="custom_customer_id"
+=======
+                  v-model="email_id"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-select
+                  dense
+                  label="Gender"
+                  :items="genders"
+                  v-model="gender"
+                ></v-select>
+              </v-col>
+              <v-col cols="6" v-show="false">
+                <v-text-field
+                  dense
+                  color="primary"
+                  :label="frappe._('Referral Code')"
+                  background-color="white"
+                  hide-details
+                  v-model="referral_code"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="6" v-show="false">
+                <v-menu
+                  ref="birthday_menu"
+                  v-model="birthday_menu"
+                  :close-on-content-click="false"
+                  transition="scale-transition"
+                  dense
+                >
+                  <template v-slot:activator="{ on, attrs }">
+                    <v-text-field
+                      v-model="birthday"
+                      :label="frappe._('Birthday')"
+                      readonly
+                      dense
+                      clearable
+                      hide-details
+                      v-bind="attrs"
+                      v-on="on"
+                      color="primary"
+                    ></v-text-field>
+                  </template>
+                  <v-date-picker
+                    v-model="birthday"
+                    color="primary"
+                    no-title
+                    scrollable
+                    :max="frappe.datetime.now_date()"
+                    @input="birthday_menu = false"
+                  >
+                  </v-date-picker>
+                </v-menu>
+              </v-col>
+              <v-col cols="6">
+                <v-autocomplete
+                  clearable
+                  dense
+                  auto-select-first
+                  color="primary"
+                  :label="frappe._('Customer Group') + ' *'"
+                  v-model="group"
+                  :items="groups"
+                  background-color="white"
+                  :no-data-text="__('Group not found')"
+                  hide-details
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
                   required
                 ></v-text-field>
               </v-col>
@@ -89,15 +200,18 @@
                 </v-autocomplete>
               </v-col>
               <v-col cols="6">
-                <v-text-field
+                <v-autocomplete
+                  clearable
                   dense
+                  auto-select-first
                   color="primary"
-                  :label="frappe._('Location')"
+                  :label="frappe._('Payment Term Template')"
+                  v-model="payment_term"
+                  :items="payment_terms"
                   background-color="white"
+                  :no-data-text="__('Payment Term Template not found')"
                   hide-details
-                  v-model="custom_location"
-                  @input="custom_location = custom_location.toUpperCase()"
-                ></v-text-field>
+                ></v-autocomplete>
               </v-col>
               <v-col cols="6" v-if="loyalty_program">
                 <v-text-field
@@ -143,6 +257,12 @@ export default {
     customer_id: '',
     custom_customer_id: '',
     customer_name: '',
+<<<<<<< HEAD
+=======
+    custom_invoice_name: '',
+    custom_vat_no: '',
+    tax_id: '',
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
     mobile_no: '',
     referral_code: '',
     birthday: null,
@@ -156,11 +276,16 @@ export default {
     gender: '',
     loyalty_points: null,
     loyalty_program: null,
+<<<<<<< HEAD
     custom_location: '',
     // lookup state
     lookup_status: '',   // 'checking' | 'exists' | 'created' | 'not_found' | 'error' | ''
     lookup_points: 0,
     _mobile_timer: null,
+=======
+    payment_term: '', 
+    payment_terms: [],
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
   }),
   watch: {
     mobile_no(val) {
@@ -231,6 +356,12 @@ export default {
     },
     clear_customer() {
       this.customer_name = '';
+<<<<<<< HEAD
+=======
+      this.custom_invoice_name = '';
+      this.custom_vat_no = '';
+      this.tax_id = '';
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
       this.mobile_no = '';
       this.referral_code = '';
       this.birthday = '';
@@ -242,9 +373,13 @@ export default {
       this.gender = '';
       this.loyalty_points = null;
       this.loyalty_program = null;
+<<<<<<< HEAD
       this.custom_location = '';
       this.lookup_status = '';
       this.lookup_points = 0;
+=======
+      this.payment_term = '';
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
     },
     getCustomerGroups() {
       if (this.groups.length > 0) return;
@@ -288,6 +423,16 @@ export default {
           }
         });
     },
+    getPaymentTerms() {
+      if (this.payment_terms.length > 0) return;
+      frappe.db.get_list('Payment Terms Template', {
+        fields: ['name'],
+        limit: 1000,
+        order_by: 'name',
+      }).then((data) => {
+        this.payment_terms = data.map((d) => d.name);
+      });
+    },
     submit_dialog() {
       if (!this.customer_name) {
         evntBus.$emit('show_mesage', { text: __('Customer name is required.'), color: 'error' });
@@ -307,6 +452,8 @@ export default {
           customer_id: this.customer_id || this.custom_customer_id,
           custom_customer_id: this.custom_customer_id,
           customer_name: this.customer_name,
+          custom_invoice_name: this.custom_invoice_name,
+          custom_vat_no: this.custom_vat_no,
           company: this.pos_profile.company,
           mobile_no: this.mobile_no,
           referral_code: this.referral_code,
@@ -315,6 +462,7 @@ export default {
           territory: this.territory,
           customer_type: this.customer_type,
           gender: this.gender,
+          payment_term: this.payment_term,
           method: this.customer_id ? 'update' : 'create',
           pos_profile_doc: this.pos_profile,
           custom_location: this.custom_location,
@@ -348,6 +496,8 @@ export default {
       this.customerDialog = true;
       if (data) {
         this.customer_name = data.customer_name;
+        this.custom_invoice_name = data.custom_invoice_name;
+        this.custom_vat_no = data.custom_vat_no;
         this.customer_id = data.name;
         this.custom_customer_id = data.name;
         this.mobile_no = data.mobile_no;
@@ -358,7 +508,11 @@ export default {
         this.loyalty_points = data.loyalty_points;
         this.loyalty_program = data.loyalty_program;
         this.gender = data.gender;
+<<<<<<< HEAD
         this.custom_location = data.custom_location;
+=======
+        this.payment_term = data.payment_term || '';
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
       }
     });
     evntBus.$on('register_pos_profile', (data) => {
@@ -370,6 +524,11 @@ export default {
     this.getCustomerGroups();
     this.getCustomerTerritorys();
     this.getGenders();
+<<<<<<< HEAD
+=======
+    this.getPaymentTerms();
+    // set default values for customer group and territory from user defaults
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
     this.group = frappe.defaults.get_user_default('Customer Group');
     this.territory = frappe.defaults.get_user_default('Territory');
   },

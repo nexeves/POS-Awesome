@@ -209,6 +209,7 @@ def get_items(
                 disabled = 0
                     AND is_sales_item = 1
                     AND is_fixed_asset = 0
+                    AND custom_pos_item = 1
                     {condition}
             ORDER BY
                 item_name asc
@@ -421,12 +422,13 @@ def get_customer_names(pos_profile):
     def _get_customer_names(pos_profile):
         pos_profile = json.loads(pos_profile)
         condition = ""
+        # condition = "custom_customer_category = 'POS'"
         condition += get_customer_group_condition(pos_profile)
         customers = frappe.db.sql(
             """
             SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
             FROM `tabCustomer`
-            WHERE {0}
+            WHERE disabled = 0
             ORDER by name
             """.format(
                 condition
@@ -1117,12 +1119,59 @@ def create_customer(
     territory=None,
     customer_type=None,
     gender=None,
+<<<<<<< HEAD
     custom_location=None,
 
     
+=======
+    custom_invoice_name=None,
+    custom_vat_no=None,
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
     method="create",
+    payment_term=None
 ):
     pos_profile = json.loads(pos_profile_doc)
+    if method == "create":
+        is_exist = frappe.db.exists("Customer", {"customer_name": customer_name})
+        if pos_profile.get("posa_allow_duplicate_customer_names") or not is_exist:
+            customer = frappe.get_doc(
+                {
+                    "doctype": "Customer",
+                    "customer_name": customer_name,
+                    "posa_referral_company": company,
+                    "tax_id": tax_id,
+                    "mobile_no": mobile_no,
+                    "email_id": email_id,
+                    "posa_referral_code": referral_code,
+                    "posa_birthday": birthday,
+                    "customer_type": customer_type,
+                    "gender": gender,
+                    # "custom_customer_category": "POS",
+                    "default_price_list": "Standard Selling",
+                    "custom_invoice_name": custom_invoice_name,
+                    "custom_vat_no":custom_vat_no,
+                }
+            )
+            if customer_group:
+                customer.customer_group = customer_group
+            else:
+                customer.customer_group = "All Customer Groups"
+            if territory:
+                customer.territory = territory
+            else:
+                customer.territory = "All Territories"
+            if payment_term:
+                customer.payment_terms = payment_term
+
+                
+            customer.append("accounts", {
+                    "company": company,
+                    "account": "Debtors - MM"
+                })
+            customer.save()
+            return customer
+        else:
+            frappe.throw(_("Customer already exists"))
 
     if not customer_id:
         customer_id = custom_customer_id
@@ -1176,11 +1225,11 @@ def create_customer(
         customer_doc.customer_group = customer_group
         customer_doc.territory = territory
         customer_doc.gender = gender
-        customer_doc.custom_location = custom_location
-
-
-        customer_doc.save(ignore_permissions=True)
-
+        customer_doc.custom_invoice_name = custom_invoice_name  
+        customer_doc.custom_vat_no = custom_vat_no
+        if payment_term:
+            customer_doc.payment_terms = payment_term
+        customer_doc.save()
         if mobile_no != customer_doc.mobile_no:
             set_customer_info(customer_doc.name, "mobile_no", mobile_no)
         if email_id != customer_doc.email_id:
@@ -1884,12 +1933,16 @@ def get_customer_info(customer):
     res["customer_group_price_list"] = frappe.get_value(
         "Customer Group", customer.customer_group, "default_price_list"
     )
+<<<<<<< HEAD
     res["party_balance"] = get_balance_on(
     party_type="Customer",
     party=customer.name
     )
 
 
+=======
+    # res["custom_offer_auto_ignore"] = customer.custom_offer_auto_ignore
+>>>>>>> c9645153da8e31666946642005ff371a30bb1f79
 
     if customer.loyalty_program:
         lp_details = get_loyalty_program_details_with_points(
@@ -1933,6 +1986,7 @@ def auto_create_items():
                 "is_sales_item": 1,
                 "is_purchase_item": 0,
                 "is_fixed_asset": 0,
+                "custom_pos_item" : 1,
                 "is_sub_contracted_item": 0,
                 "is_pro_applicable": 0,
                 "is_manufactured_item": 0,
