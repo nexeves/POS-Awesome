@@ -25,7 +25,6 @@ from erpnext.accounts.doctype.payment_request.payment_request import (
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 from erpnext.accounts.doctype.loyalty_program.loyalty_program import (
     get_loyalty_program_details_with_points,
-    get_loyalty_program_details_with_points_posting_date,
 )
 from posawesome.posawesome.doctype.pos_coupon.pos_coupon import check_coupon_code
 from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
@@ -1726,15 +1725,9 @@ def get_customer_info(customer):
             silent=True,
             include_expired_entry=False,
         )
-        lp_details_posting_date = get_loyalty_program_details_with_points_posting_date(
-            customer.name,
-            customer.loyalty_program,
-            silent=True,
-            include_expired_entry=False,
-        )
         res["loyalty_points"] = lp_details.get("loyalty_points")
         res["conversion_factor"] = lp_details.get("conversion_factor")
-        res["loyalty_points_posting_date"] = lp_details_posting_date.get("loyalty_points")
+        res["loyalty_points_posting_date"] = lp_details.get("loyalty_points")
     return res
 
 
