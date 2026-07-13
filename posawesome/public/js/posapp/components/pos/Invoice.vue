@@ -1525,6 +1525,7 @@ export default {
     get_payments() {
       const payments = [];
       let has_employee_mop = false;
+      let has_shareholder_mop = false;
       this.pos_profile.payments.forEach((payment) => {
         payments.push({
           amount: 0,
@@ -1535,12 +1536,23 @@ export default {
         if (payment.mode_of_payment === "Employee") {
           has_employee_mop = true;
         }
+        if (payment.mode_of_payment === "Shareholder") {
+          has_shareholder_mop = true;
+        }
       });
 
       if (this.customer_info && this.customer_info.customer_group === "Employee" && !has_employee_mop) {
         payments.push({
           amount: 0,
           mode_of_payment: "Employee",
+          default: 0,
+          account: "",
+        });
+      }
+      if (this.customer_info && this.customer_info.customer_group === "Shareholder" && !has_shareholder_mop) {
+        payments.push({
+          amount: 0,
+          mode_of_payment: "Shareholder",
           default: 0,
           account: "",
         });
