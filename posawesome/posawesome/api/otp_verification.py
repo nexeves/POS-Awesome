@@ -205,7 +205,7 @@ def verify_loyalty_otp(customer, mobile_number, otp_code):
 def get_loyalty_points(customer):
     """Get available loyalty points for customer"""
     try:
-        from erpnext.accounts.doctype.loyalty_program.loyalty_program import get_loyalty_program_details_with_points
+        from espanshe_erp.espanshe_erp.overrides.loyalty import get_loyalty_program_details_with_points_all_companies as get_loyalty_program_details_with_points
         
         loyalty_program_details = get_loyalty_program_details_with_points(
             customer=customer,

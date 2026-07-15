@@ -24,8 +24,8 @@ from erpnext.accounts.doctype.payment_request.payment_request import (
 )
 
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
-from erpnext.accounts.doctype.loyalty_program.loyalty_program import (
-    get_loyalty_program_details_with_points,
+from espanshe_erp.espanshe_erp.overrides.loyalty import (
+    get_loyalty_program_details_with_points_all_companies as get_loyalty_program_details_with_points,
 )
 from posawesome.posawesome.doctype.pos_coupon.pos_coupon import check_coupon_code
 from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
@@ -1723,7 +1723,7 @@ def make_payment_request(**args):
 
     grand_total = get_amount(ref_doc, gateway_account.get("payment_account"))
     if args.loyalty_points and args.dt == "Sales Order":
-        from erpnext.accounts.doctype.loyalty_program.loyalty_program import (
+        from espanshe_erp.espanshe_erp.overrides.loyalty import (
             validate_loyalty_points,
         )
 
