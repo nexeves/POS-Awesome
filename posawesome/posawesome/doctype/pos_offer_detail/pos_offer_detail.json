@@ -12,6 +12,7 @@
   "items",
   "give_item",
   "give_item_row_id",
+  "give_item_row_ids",
   "offer_applied",
   "coupon_based",
   "coupon"
@@ -73,6 +74,15 @@
    "fieldname": "give_item_row_id",
    "fieldtype": "Data",
    "label": "Give Item Row ID",
+   "read_only": 1
+  },
+  {
+   "description": "JSON list of every free line row id created by this offer. A Give Product offer can span several cart lines when given_qty is spread across different items.",
+   "fieldname": "give_item_row_ids",
+   "fieldtype": "Small Text",
+   "label": "Give Item Row IDs",
+   "no_copy": 1,
+   "print_hide": 1,
    "read_only": 1
   },
   {
