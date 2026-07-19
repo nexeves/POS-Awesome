@@ -2373,6 +2373,11 @@ export default {
           if (transactionOffer) {
             offers.push(transactionOffer);
           }
+        } else if (offer.apply_on === "Item Selection") {
+          const selectionOffer = this.getSelectionOffer(offer);
+          if (selectionOffer) {
+            offers.push(selectionOffer);
+          }
         }
       });
 
@@ -2391,11 +2396,17 @@ export default {
           offer.give_item = offer.item;
           offer.apply_item_code = offer.item;
         } else if (
-          offer.apply_on == "Item Group" &&
-          offer.apply_type == "Item Group" &&
+          (offer.apply_type == "Item Group" ||
+            offer.apply_type == "Item Selection") &&
           offer.replace_cheapest_item
         ) {
-          const cheapest = this.getCheapestItem(offer);
+          // Cheapest unit in the give pool (getGiveItemCodes narrows it for
+          // Item Selection). Used only to label the offer's give_item in the
+          // panel; the actual allocation happens in applyReplaceCheapestPlan.
+          const plan = this.getCheapestUnitsPlan(offer, 1);
+          const cheapest = plan.length
+            ? this.getItemFromRowID(plan[0].row_id)
+            : null;
           if (cheapest) {
             offer.give_item = cheapest.item_code;
             offer.apply_item_code = cheapest.item_code;
@@ -2470,6 +2481,20 @@ export default {
       return this.flt(line.price_list_rate);
     },
 
+    // When apply_type is "Item Selection", only these item codes may be given
+    // away for free. null means "no restriction" (Item Group gives from the
+    // whole qualifying group).
+    getGiveItemCodes(offer) {
+      if (
+        offer.apply_type === "Item Selection" &&
+        Array.isArray(offer.give_items) &&
+        offer.give_items.length
+      ) {
+        return new Set(offer.give_items.map((r) => r.item_code).filter(Boolean));
+      }
+      return null;
+    },
+
     getOfferEligibleLines(offer) {
       let itemsRowID = offer.items;
       if (typeof itemsRowID === "string") {
@@ -2479,10 +2504,15 @@ export default {
           itemsRowID = [];
         }
       }
+      const giveCodes = this.getGiveItemCodes(offer);
       const lines = [];
       (itemsRowID || []).forEach((row_id) => {
         const line = this.getItemFromRowID(row_id);
         if (line && !line.posa_is_offer && !line.posa_is_replace) {
+          // Restrict the give pool to the offer's give_items when set.
+          if (giveCodes && !giveCodes.has(line.item_code)) {
+            return;
+          }
           lines.push(line);
         }
       });
@@ -2715,6 +2745,55 @@ export default {
           this.items.forEach((item) => {
             if (!item.posa_is_offer && item.item_group === offer.item_group && this.filterItemCodeByRange(item, offer)) {
 
+              if (
+                offer.offer === "Item Price" &&
+                item.posa_offer_applied &&
+                !this.checkOfferIsAppley(item, offer)
+              ) {
+              } else {
+                total_count += item.stock_qty;
+                total_amount += item.stock_qty * item.price_list_rate;
+                items.push(item.posa_row_id);
+              }
+            }
+          });
+          if (total_count || total_amount) {
+            const res = this.checkQtyAnountOffer(
+              offer,
+              total_count,
+              total_amount
+            );
+            if (res.apply) {
+              offer.items = items;
+              apply_offer = offer;
+            }
+          }
+        }
+      }
+      return apply_offer;
+    },
+
+    // Item codes hand-picked in the offer's selection_items child table.
+    getSelectionItemCodes(offer) {
+      const rows = Array.isArray(offer.selection_items)
+        ? offer.selection_items
+        : [];
+      return new Set(rows.map((r) => r.item_code).filter(Boolean));
+    },
+
+    // Qualify an "Item Selection" offer: exactly like getGroupOffer, but the
+    // membership test is "item_code is in the hand-picked list" instead of
+    // belonging to one item group.
+    getSelectionOffer(offer) {
+      let apply_offer = null;
+      if (offer.apply_on === "Item Selection") {
+        if (this.checkOfferCoupon(offer)) {
+          const selectionCodes = this.getSelectionItemCodes(offer);
+          const items = [];
+          let total_count = 0;
+          let total_amount = 0;
+          this.items.forEach((item) => {
+            if (!item.posa_is_offer && selectionCodes.has(item.item_code)) {
               if (
                 offer.offer === "Item Price" &&
                 item.posa_offer_applied &&
@@ -3038,11 +3117,10 @@ export default {
             this.items.unshift(item);
             offer.give_item_row_id = item.posa_row_id;
           }
-        } else if (
-          offer.apply_on == "Item Group" &&
-          offer.apply_type == "Item Group" &&
-          offer.replace_cheapest_item
-        ) {
+        } else if (offer.replace_cheapest_item) {
+          // Replace cheapest, for both "Item Group" and "Item Selection" apply
+          // types. The plan pulls the give pool from offer.items, narrowed to
+          // give_items for Item Selection (see getGiveItemCodes).
           const freeRowIds = this.applyReplaceCheapestPlan(offer);
           offer.give_item_row_ids = JSON.stringify(freeRowIds);
           offer.give_item_row_id = freeRowIds[0] || null;

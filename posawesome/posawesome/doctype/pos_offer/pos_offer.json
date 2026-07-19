@@ -26,6 +26,7 @@
   "custom_to_itemcode",
   "get_items",
   "custom_items",
+  "selection_items",
   "valid_from",
   "valid_upto",
   "coupon_based",
@@ -44,6 +45,8 @@
   "apply_item_code",
   "apply_item_group",
   "less_then",
+  "fetch_selection_items",
+  "give_items",
   "product_discount_scheme_section",
   "given_qty",
   "price_discount_scheme_section",
@@ -83,7 +86,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Qualifying Transaction / Item",
-   "options": "\nItem Code\nItem Group\nBrand\nTransaction",
+   "options": "\nItem Code\nItem Group\nBrand\nTransaction\nItem Selection",
    "reqd": 1
   },
   {
@@ -179,7 +182,7 @@
    "fieldname": "apply_type",
    "fieldtype": "Select",
    "label": "Apply Type",
-   "options": "\nItem Code\nItem Group"
+   "options": "\nItem Code\nItem Group\nItem Selection"
   },
   {
    "fieldname": "column_break_15",
@@ -333,6 +336,28 @@
    "fieldname": "get_items",
    "fieldtype": "Button",
    "label": "Get Items"
+  },
+  {
+   "allow_bulk_edit": 1,
+   "description": "Hand-picked items that qualify this offer (used when Qualifying Transaction / Item is 'Item Selection'). Not restricted to one Item Group.",
+   "fieldname": "selection_items",
+   "fieldtype": "Table",
+   "label": "Selection Items",
+   "options": "POS Offer Item Range"
+  },
+  {
+   "description": "Copy the qualifying Selection Items into the Give Items table below.",
+   "fieldname": "fetch_selection_items",
+   "fieldtype": "Button",
+   "label": "Fetch From Selection Items"
+  },
+  {
+   "allow_bulk_edit": 1,
+   "description": "Items eligible to be given for free (used when Apply Type is 'Item Selection'). With Replace Cheapest ticked, the cheapest Given Quantity units among these in the cart are zeroed.",
+   "fieldname": "give_items",
+   "fieldtype": "Table",
+   "label": "Give Items",
+   "options": "POS Offer Item Range"
   }
  ],
  "index_web_pages_for_search": 1,

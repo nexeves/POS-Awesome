@@ -29,7 +29,7 @@ frappe.ui.form.on('POS Offer', {
 				frappe.throw("Loyalty Points most be more then zero");
 			}
 		}
-		if (frm.doc.apply_type === 'Item Group' && frm.doc.offer === 'Give Product' && !frm.doc.replace_item && !frm.doc.replace_cheapest_item) {
+		if ((frm.doc.apply_type === 'Item Group' || frm.doc.apply_type === 'Item Selection') && frm.doc.offer === 'Give Product' && !frm.doc.replace_item && !frm.doc.replace_cheapest_item) {
 			frm.set_value('auto', 0);
 		}
 	},
@@ -75,13 +75,19 @@ const controllers = (frm) => {
 	frm.toggle_display('brand', frm.doc.apply_on === 'Brand');
 	frm.toggle_reqd('brand', frm.doc.apply_on === 'Brand');
 
+	frm.toggle_display('selection_items', frm.doc.apply_on === 'Item Selection');
+	frm.toggle_reqd('selection_items', frm.doc.apply_on === 'Item Selection');
+
 	frm.toggle_reqd('min_amt', frm.doc.apply_on === 'Transaction');
 
 	frm.toggle_display('apply_for_section', frm.doc.offer === 'Give Product');
 	frm.toggle_reqd('apply_type', frm.doc.offer === 'Give Product');
 
 	frm.toggle_display('replace_item', frm.doc.apply_on === 'Item Code' && frm.doc.offer === 'Give Product' && frm.doc.apply_type === 'Item Code');
-	frm.toggle_display('replace_cheapest_item', frm.doc.apply_on === 'Item Group' && frm.doc.offer === 'Give Product' && frm.doc.apply_type === 'Item Group');
+	// Replace Cheapest now covers both "Item Group" and the new "Item Selection"
+	// apply types (both give away the cheapest Given Quantity units).
+	const can_replace_cheapest = frm.doc.offer === 'Give Product' && (frm.doc.apply_type === 'Item Group' || frm.doc.apply_type === 'Item Selection');
+	frm.toggle_display('replace_cheapest_item', can_replace_cheapest);
 
 	frm.toggle_display('apply_item_code', frm.doc.apply_type === 'Item Code' && !frm.doc.replace_item);
 	frm.toggle_reqd('apply_item_code', frm.doc.apply_type === 'Item Code' && !frm.doc.replace_item);
@@ -90,6 +96,11 @@ const controllers = (frm) => {
 	frm.toggle_reqd('apply_item_group', frm.doc.apply_type === 'Item Group' && !frm.doc.replace_cheapest_item);
 
 	frm.toggle_display('less_then', frm.doc.apply_type === 'Item Group' && !frm.doc.replace_cheapest_item);
+
+	// Give Items table + its fetch button appear for the "Item Selection" apply type.
+	frm.toggle_display('give_items', frm.doc.apply_type === 'Item Selection');
+	frm.toggle_reqd('give_items', frm.doc.apply_type === 'Item Selection');
+	frm.toggle_display('fetch_selection_items', frm.doc.apply_type === 'Item Selection');
 
 	frm.toggle_display('product_discount_scheme_section', frm.doc.offer === 'Give Product');
 	frm.toggle_display('given_qty', frm.doc.offer === 'Give Product');
@@ -127,13 +138,13 @@ const controllers = (frm) => {
 		frm.set_df_property('offer', 'options', ['', 'Item Price', 'Give Product', 'Grand Total', 'Loyalty Point']);
 	}
 
-	if (frm.doc.apply_type === 'Item Group' && frm.doc.offer === 'Give Product' && !frm.doc.replace_item && !frm.doc.replace_cheapest_item) {
+	if ((frm.doc.apply_type === 'Item Group' || frm.doc.apply_type === 'Item Selection') && frm.doc.offer === 'Give Product' && !frm.doc.replace_item && !frm.doc.replace_cheapest_item) {
 		frm.set_value('auto', 0);
 	}
 	if (frm.doc.apply_on !== 'Item Code' || frm.doc.offer !== 'Give Product' || frm.doc.apply_type !== 'Item Code') {
 		frm.set_value('replace_item', 0);
 	}
-	if (frm.doc.apply_on !== 'Item Group' || frm.doc.offer !== 'Give Product' || frm.doc.apply_type !== 'Item Group') {
+	if (frm.doc.offer !== 'Give Product' || (frm.doc.apply_type !== 'Item Group' && frm.doc.apply_type !== 'Item Selection')) {
 		frm.set_value('replace_cheapest_item', 0);
 	}
 
@@ -144,8 +155,38 @@ const controllers = (frm) => {
  frappe.ui.form.on('POS Offer', {
     get_items(frm) {
         show_items_in_range(frm);
+    },
+    fetch_selection_items(frm) {
+        copy_selection_items_to_give_items(frm);
     }
 });
+
+function copy_selection_items_to_give_items(frm) {
+    if (!frm.doc.selection_items || !frm.doc.selection_items.length) {
+        frappe.msgprint("Please add rows to Selection Items first.");
+        return;
+    }
+    const existing = new Set(
+        (frm.doc.give_items || []).map((row) => row.item_code)
+    );
+    let added = 0;
+    frm.doc.selection_items.forEach((src) => {
+        if (!src.item_code || existing.has(src.item_code)) {
+            return;
+        }
+        const row = frm.add_child("give_items");
+        row.item_code = src.item_code;
+        row.item_group = src.item_group;
+        row.item_name = src.item_name;
+        existing.add(src.item_code);
+        added += 1;
+    });
+    frm.refresh_field("give_items");
+    frappe.show_alert({
+        message: `${added} item(s) copied to Give Items.`,
+        indicator: "green",
+    });
+}
 
 
 const set_filters = (frm) => {

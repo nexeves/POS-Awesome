@@ -53,7 +53,8 @@
                       color="primary"
                       :label="frappe._('Give Item')"
                       :disabled="
-                        item.apply_type != 'Item Group' ||
+                        (item.apply_type != 'Item Group' &&
+                          item.apply_type != 'Item Selection') ||
                         item.replace_item ||
                         item.replace_cheapest_item
                       "
@@ -162,8 +163,8 @@ export default {
             pos_offer.offer_applied = !!pos_offer.auto;
           }
           if (
-            offer.apply_on == 'Item Group' &&
-            offer.apply_type == 'Item Group' &&
+            (offer.apply_type == 'Item Group' ||
+              offer.apply_type == 'Item Selection') &&
             offer.replace_cheapest_item
           ) {
             pos_offer.give_item = offer.give_item;
@@ -181,11 +182,13 @@ export default {
             newOffer.offer_applied == !!offer.offer_applied;
           } else {
             if (
-              offer.apply_type == 'Item Group' &&
+              (offer.apply_type == 'Item Group' ||
+                offer.apply_type == 'Item Selection') &&
               offer.offer == 'Give Product' &&
               !offer.replace_cheapest_item &&
               !offer.replace_item
             ) {
+              // Cashier must pick which item to give, so don't auto-apply.
               newOffer.offer_applied = false;
             } else if (
               offer.offer === 'Grand Total' &&
@@ -197,7 +200,11 @@ export default {
             }
           }
           if (newOffer.offer == 'Give Product' && !newOffer.give_item) {
-            newOffer.give_item = this.get_give_items(newOffer)[0].item_code;
+            const give_items = this.get_give_items(newOffer);
+            if (give_items && give_items.length && give_items[0]) {
+              newOffer.give_item =
+                give_items[0].item_code || give_items[0];
+            }
           }
           this.pos_offers.push(newOffer);
           evntBus.$emit('show_mesage', {
@@ -228,6 +235,13 @@ export default {
     get_give_items(offer) {
       if (offer.apply_type == 'Item Code') {
         return [offer.apply_item_code];
+      } else if (offer.apply_type == 'Item Selection') {
+        // Give items are the hand-picked list on the offer; resolve them
+        // against the catalogue so the dropdown rows carry rate/uom etc.
+        const codes = (offer.give_items || [])
+          .map((r) => r.item_code)
+          .filter(Boolean);
+        return this.allItems.filter((item) => codes.includes(item.item_code));
       } else if (offer.apply_type == 'Item Group') {
         const items = this.allItems;
         let filterd_items = [];
