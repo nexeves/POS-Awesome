@@ -793,6 +793,7 @@ def redeeming_customer_credit(
                         "voucher_type": "Journal Entry",
                         "posting_date": today,
                         "company": invoice_doc.company,
+                        "cost_center": cost_center
                     }
                 )
 
