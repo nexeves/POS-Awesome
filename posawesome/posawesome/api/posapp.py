@@ -1050,6 +1050,8 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None):
     today = nowdate()
     item_code = item.get("item_code")
     batch_no_data = []
+    if warehouse:
+        item["warehouse"] = warehouse
     if warehouse and item.get("has_batch_no"):
         batch_list = get_batch_qty(warehouse=warehouse, item_code=item_code)
         if batch_list:
