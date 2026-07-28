@@ -486,7 +486,6 @@ def get_sales_person_names(pos_profile=None):
         "Sales Person",
         filters={
             "enabled": 1,
-            "parent_sales_person": pos_profile
         },
         fields=["name", "sales_person_name"],
         limit_page_length=100000,
