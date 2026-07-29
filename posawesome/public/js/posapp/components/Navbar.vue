@@ -183,12 +183,14 @@ export default {
     go_sales_invoice() {
       const cost_center = this.pos_profile.cost_center || '';
       const warehouse = this.pos_profile.warehouse || '';
+      const company = this.pos_profile.company || '';
     
       localStorage.setItem('posa_return_invoice', '1');  // ADD THIS
     
       let params = new URLSearchParams({
         ...(cost_center && { cost_center }),
         ...(warehouse && { set_warehouse: warehouse }),
+        ...(company && { company }),
       });
     
       window.open(
