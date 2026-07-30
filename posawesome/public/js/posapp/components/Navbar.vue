@@ -184,6 +184,7 @@ export default {
       const cost_center = this.pos_profile.cost_center || '';
       const warehouse = this.pos_profile.warehouse || '';
       const company = this.pos_profile.company || '';
+      const pos_profile = this.pos_profile.name || '';
     
       localStorage.setItem('posa_return_invoice', '1');  // ADD THIS
     
@@ -191,6 +192,7 @@ export default {
         ...(cost_center && { cost_center }),
         ...(warehouse && { set_warehouse: warehouse }),
         ...(company && { company }),
+        ...(pos_profile && { pos_profile }),
       });
     
       window.open(
