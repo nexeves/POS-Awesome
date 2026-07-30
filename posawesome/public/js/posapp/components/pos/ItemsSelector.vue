@@ -240,6 +240,8 @@ export default {
         vm.items = JSON.parse(localStorage.getItem("items_storage"));
         evntBus.$emit("set_all_items", vm.items);
         vm.loading = false;
+        // Immediately refresh stock quantities from server
+        vm.refresh_stock_qty();
       }
       frappe.call({
         method: "posawesome.posawesome.api.posapp.get_items",
@@ -273,6 +275,32 @@ export default {
             if (vm.pos_profile.pose_use_limit_search) {
               vm.enter_event();
             }
+          }
+        },
+      });
+    },
+    refresh_stock_qty() {
+      const vm = this;
+      if (!vm.items || !vm.items.length || !vm.pos_profile.warehouse) return;
+      const item_codes = vm.items.map((item) => item.item_code);
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.get_items_stock_qty",
+        args: {
+          warehouse: vm.pos_profile.warehouse,
+          items: item_codes,
+        },
+        async: true,
+        callback: function (r) {
+          if (r.message) {
+            const stock_map = r.message;
+            vm.items.forEach((item) => {
+              if (stock_map.hasOwnProperty(item.item_code)) {
+                item.actual_qty = stock_map[item.item_code];
+              }
+            });
+            // Force Vue reactivity update
+            vm.items = [...vm.items];
+            evntBus.$emit("set_all_items", vm.items);
           }
         },
       });
@@ -537,16 +565,25 @@ export default {
         } else {
           filtred_group_list = this.items;
         }
+
+        // Apply stock filter for default view (no search)
+        // When searching, show ALL items so every item is findable
         if (!this.search || this.search.length < 3) {
+          let display_list = filtred_group_list;
+          if (this.pos_profile.posa_display_items_in_stock) {
+            display_list = filtred_group_list.filter(
+              (item) => !item.is_stock_item || (item.actual_qty && item.actual_qty > 0)
+            );
+          }
           if (
             this.pos_profile.posa_show_template_items &&
             this.pos_profile.posa_hide_variants_items
           ) {
-            return (filtred_list = filtred_group_list
+            return (filtred_list = display_list
               .filter((item) => !item.variant_of)
               .slice(0, 50));
           } else {
-            return (filtred_list = filtred_group_list.slice(0, 50));
+            return (filtred_list = display_list.slice(0, 50));
           }
         } else if (this.search) {
           filtred_list = filtred_group_list.filter((item) => {
