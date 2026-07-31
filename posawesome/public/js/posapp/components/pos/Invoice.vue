@@ -2487,10 +2487,10 @@ export default {
     getGiveItemCodes(offer) {
       if (
         offer.apply_type === "Item Selection" &&
-        Array.isArray(offer.give_items) &&
-        offer.give_items.length
+        Array.isArray(offer.selection_items) &&
+        offer.selection_items.length
       ) {
-        return new Set(offer.give_items.map((r) => r.item_code).filter(Boolean));
+        return new Set(offer.selection_items.map((r) => r.item_code).filter(Boolean));
       }
       return null;
     },
