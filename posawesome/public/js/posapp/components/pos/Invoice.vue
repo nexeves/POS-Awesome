@@ -892,6 +892,7 @@ export default {
       items: [],
       posOffers: [],
       posa_offers: [],
+      posa_payment_screen_active: false,
       posa_coupons: [],
       allItems: [],
       discount_percentage_offer_name: null,
@@ -2607,6 +2608,11 @@ export default {
           this.applyNewOffer(offer);
         }
       });
+      if (this.posa_payment_screen_active) {
+        this.$nextTick(() => {
+          evntBus.$emit("send_invoice_doc_payment", this.process_invoice());
+        });
+      }
     },
 
     removeApplyOffer(invoiceOffer) {
@@ -2729,6 +2735,7 @@ export default {
         offer_applied: offer.offer_applied,
         coupon_based: offer.coupon_based,
         coupon: offer.coupon,
+        posa_block_loyalty_redeem: offer.posa_block_loyalty_redeem ? 1 : 0,
       };
       this.posa_offers.push(newOffer);
       this.addOfferToItems(newOffer);
@@ -3047,6 +3054,9 @@ export default {
     evntBus.$on("set_offers", (data) => {
       this.posOffers = data;
     });
+    evntBus.$on("show_payment", (value) => {
+      this.posa_payment_screen_active = value === "true";
+    });
     evntBus.$on("update_invoice_offers", (data) => {
       this.updateInvoiceOffers(data);
     });
@@ -3078,6 +3088,7 @@ export default {
     evntBus.$off("fetch_customer_details");
     evntBus.$off("new_invoice");
     evntBus.$off("set_offers");
+    evntBus.$off("show_payment");
     evntBus.$off("update_invoice_offers");
     evntBus.$off("update_invoice_coupons");
     evntBus.$off("set_all_items");

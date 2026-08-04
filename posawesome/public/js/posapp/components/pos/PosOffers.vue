@@ -99,6 +99,8 @@ export default {
     custom_offer_auto_ignore: 0,
     pos_profile: '',
     pos_offers: [],
+    posa_loyalty_override: false,
+    posa_auto_removed_offers: [],
     allItems: [],
     discount_percentage_offer_name: null,
     itemsPerPage: 1000,
@@ -209,6 +211,27 @@ export default {
           });
         }
       });
+      this.applyLoyaltyOverride();
+    },
+    applyLoyaltyOverride() {
+      if (this.posa_loyalty_override) {
+        this.pos_offers.forEach((offer) => {
+          if (offer.posa_block_loyalty_redeem && offer.offer_applied) {
+            offer.offer_applied = false;
+            if (!this.posa_auto_removed_offers.includes(offer.name)) {
+              this.posa_auto_removed_offers.push(offer.name);
+            }
+          }
+        });
+      } else {
+        this.pos_offers.forEach((offer) => {
+          if (this.posa_auto_removed_offers.includes(offer.name)) {
+            offer.offer_applied = true;
+          }
+        });
+        this.posa_auto_removed_offers = [];
+      }
+      this.forceUpdateItem();
     },
     removeOffers(offers_id_list) {
       this.pos_offers = this.pos_offers.filter(
@@ -300,6 +323,10 @@ export default {
     });
     evntBus.$on('update_pos_offers', (data) => {
       this.updatePosOffers(data);
+    });
+    evntBus.$on('posa_toggle_redeem_loyalty_without_offer', (checked) => {
+      this.posa_loyalty_override = checked;
+      this.applyLoyaltyOverride();
     });
     evntBus.$on('update_discount_percentage_offer_name', (data) => {
       this.discount_percentage_offer_name = data.value;

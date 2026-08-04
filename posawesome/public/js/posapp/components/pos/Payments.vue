@@ -162,6 +162,15 @@
             !invoice_doc.is_return
           "
         >
+          <v-col cols="12" v-if="posa_has_blocking_loyalty_offer">
+            <v-checkbox
+              dense
+              hide-details
+              v-model="posa_redeem_loyalty_without_offer"
+              :label="frappe._('Redeem Loyalty Without Offer')"
+              @change="toggleRedeemLoyaltyWithoutOffer"
+            ></v-checkbox>
+          </v-col>
           <v-col cols="7">
             <v-text-field
               dense
@@ -173,6 +182,11 @@
               v-model="loyalty_amount"
               type="number"
               :prefix="currencySymbol(invoice_doc.currency)"
+              :readonly="
+                posa_has_blocking_loyalty_offer &&
+                !posa_redeem_loyalty_without_offer
+              "
+              @click="onLoyaltyAmountClick"
             ></v-text-field>
           </v-col>
           <v-col cols="5">
@@ -736,6 +750,7 @@ export default {
     pos_profile: "",
     invoice_doc: "",
     loyalty_amount: 0,
+    posa_redeem_loyalty_without_offer: false,
     is_credit_sale: 0,
     is_write_off_change: 0,
     date_menu: false,
@@ -766,6 +781,25 @@ export default {
       evntBus.$emit("show_payment", "false");
       evntBus.$emit("set_customer_readonly", false);
     },
+    toggleRedeemLoyaltyWithoutOffer() {
+      evntBus.$emit(
+        "posa_toggle_redeem_loyalty_without_offer",
+        this.posa_redeem_loyalty_without_offer
+      );
+    },
+    onLoyaltyAmountClick() {
+      if (
+        this.posa_has_blocking_loyalty_offer &&
+        !this.posa_redeem_loyalty_without_offer
+      ) {
+        evntBus.$emit("show_mesage", {
+          text: __(
+            "Loyalty points redemption is blocked by an applied offer. Check 'Redeem Loyalty Without Offer' to remove it and redeem points."
+          ),
+          color: "error",
+        });
+      }
+    },
     submit(event, payment_received = false, print = false) {
       let hasLoyalty = this.flt(this.loyalty_amount) > 0;
       let hasCashPayment = this.invoice_doc.payments.some(
@@ -774,6 +808,20 @@ export default {
       if (hasLoyalty && hasCashPayment) {
         evntBus.$emit("show_mesage", {
           text: __("You cannot use Loyalty Points together with another payment method."),
+          color: "error",
+        });
+        frappe.utils.play_sound("error");
+        return;
+      }
+      if (
+        hasLoyalty &&
+        this.posa_has_blocking_loyalty_offer &&
+        !this.posa_redeem_loyalty_without_offer
+      ) {
+        evntBus.$emit("show_mesage", {
+          text: __(
+            "Loyalty points redemption is blocked by an applied offer. Check 'Redeem Loyalty Without Offer' to remove it and redeem points."
+          ),
           color: "error",
         });
         frappe.utils.play_sound("error");
@@ -1411,6 +1459,13 @@ export default {
       }
       return amount;
     },
+    posa_has_blocking_loyalty_offer() {
+      return !!(
+        this.invoice_doc &&
+        Array.isArray(this.invoice_doc.posa_offers) &&
+        this.invoice_doc.posa_offers.some((o) => o.posa_block_loyalty_redeem)
+      );
+    },
     available_points_posting_date_amount() {
       let amount = 0;
       if (this.customer_info.loyalty_points_posting_date) {
@@ -1472,6 +1527,10 @@ export default {
   mounted: function () {
     this.$nextTick(function () {
       evntBus.$on("send_invoice_doc_payment", (invoice_doc) => {
+        const previous_invoice_name = this.invoice_doc && this.invoice_doc.name;
+        if (previous_invoice_name !== invoice_doc.name) {
+          this.posa_redeem_loyalty_without_offer = false;
+        }
         this.invoice_doc = invoice_doc;
         const default_payment = this.invoice_doc.payments.find(
           (payment) => payment.default == 1
@@ -1550,11 +1609,25 @@ export default {
 
   watch: {
     loyalty_amount(value) {
+      if (
+        value > 0 &&
+        this.posa_has_blocking_loyalty_offer &&
+        !this.posa_redeem_loyalty_without_offer
+      ) {
+        this.loyalty_amount = 0;
+        evntBus.$emit("show_mesage", {
+          text: __(
+            "Loyalty points redemption is blocked by an applied offer. Check 'Redeem Loyalty Without Offer' to remove it and redeem points."
+          ),
+          color: "error",
+        });
+        return;
+      }
       if (value > 0 && !this.is_loyalty_otp_verified) {
         this.check_loyalty_otp();
         return;
       }
-      
+
       if (value > this.available_pioints_amount) {
         this.invoice_doc.loyalty_amount = 0;
         this.invoice_doc.redeem_loyalty_points = 0;
@@ -1583,6 +1656,11 @@ export default {
           this.invoice_doc.grand_total = this.flt(this.invoice_doc.grand_total) - this.flt(this.invoice_doc.total_taxes_and_charges);
           this.invoice_doc.total_taxes_and_charges = 0;
         }
+      }
+    },
+    posa_redeem_loyalty_without_offer(value) {
+      if (!value) {
+        this.loyalty_amount = 0;
       }
     },
     is_credit_sale(value) {
