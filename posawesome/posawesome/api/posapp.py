@@ -1247,7 +1247,7 @@ def create_customer(
             "doctype": "Customer",
             "customer_name": customer_name,
             "custom_customer_id": customer_id, 
-            "posa_referral_company": company,
+            # "posa_referral_company": company,
             "tax_id": tax_id,
             "mobile_no": mobile_no,
             "email_id": email_id,
@@ -1271,7 +1271,7 @@ def create_customer(
 
         customer_doc.customer_name = customer_name
         customer_doc.custom_customer_id = customer_id   
-        customer_doc.posa_referral_company = company
+        # customer_doc.posa_referral_company = company
         customer_doc.tax_id = tax_id
         customer_doc.posa_referral_code = referral_code
         customer_doc.posa_birthday = birthday
