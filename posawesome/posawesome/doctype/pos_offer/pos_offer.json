@@ -27,6 +27,7 @@
   "valid_upto",
   "coupon_based",
   "auto",
+  "posa_block_loyalty_redeem",
   "quantity_and_amount_section",
   "min_qty",
   "max_qty",
@@ -306,6 +307,12 @@
    "fieldname": "coupon_based",
    "fieldtype": "Check",
    "label": "Coupon Code Based"
+  },
+  {
+   "default": "0",
+   "fieldname": "posa_block_loyalty_redeem",
+   "fieldtype": "Check",
+   "label": "Block Loyalty Points Redemption"
   }
  ],
  "index_web_pages_for_search": 1,

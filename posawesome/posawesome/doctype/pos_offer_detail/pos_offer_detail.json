@@ -14,7 +14,8 @@
   "give_item_row_id",
   "offer_applied",
   "coupon_based",
-  "coupon"
+  "coupon",
+  "posa_block_loyalty_redeem"
  ],
  "fields": [
   {
@@ -90,6 +91,15 @@
    "fieldname": "coupon_based",
    "fieldtype": "Check",
    "label": "Coupon Based",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "offer_name.posa_block_loyalty_redeem",
+   "fetch_if_empty": 1,
+   "fieldname": "posa_block_loyalty_redeem",
+   "fieldtype": "Check",
+   "label": "Block Loyalty Points Redemption",
    "read_only": 1
   }
  ],
