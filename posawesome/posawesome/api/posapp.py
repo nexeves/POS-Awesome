@@ -1143,7 +1143,8 @@ def create_customer(
         customer = frappe.get_doc({
             "doctype": "Customer",
             "customer_name": customer_name,
-            "custom_customer_id": customer_id,
+            "custom_customer_id": customer_id, 
+            # "posa_referral_company": company,
             "tax_id": tax_id,
             "mobile_no": mobile_no,
             "email_id": email_id,
