@@ -958,7 +958,8 @@ export default {
     set_rest_amount(idx) {
         const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
         const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
-        const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+        const customer_credit = this.flt(this.redeemed_customer_credit) || 0;
+        const amount_to_pay = this.flt(invoice_total - loyalty_deduction - customer_credit, this.currency_precision);
         
         this.invoice_doc.payments.forEach((payment) => {
           if (
@@ -1521,18 +1522,48 @@ export default {
       evntBus.$emit("show_payment", "false");
       evntBus.$emit("set_customer_readonly", false);
     },
+    // auto_update_payment_amount() {
+    //   if (!this.invoice_doc || !this.invoice_doc.payments) return;
+      
+    //   const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+    //   const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
+    //   const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
+      
+    //   // Find the payment that currently has an amount > 0
+    //   const active_payment = this.invoice_doc.payments.find(p => p.amount > 0);
+      
+    //   if (active_payment) {
+    //     // Update the active payment
+    //     active_payment.amount = amount_to_pay;
+    //   } else {
+    //     // If no active payment, use the default one
+    //     const default_payment = this.invoice_doc.payments.find(p => p.default == 1);
+    //     if (default_payment) {
+    //       default_payment.amount = amount_to_pay;
+    //     }
+    //   }
+    // },
     auto_update_payment_amount() {
       if (!this.invoice_doc || !this.invoice_doc.payments) return;
-      
-      const invoice_total = this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
-      const loyalty_deduction = this.flt(this.invoice_doc.loyalty_amount) || 0;
-      const amount_to_pay = this.flt(invoice_total - loyalty_deduction, this.currency_precision);
-      
+    
+      const invoice_total =
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total;
+    
+      const loyalty_deduction =
+        this.flt(this.invoice_doc.loyalty_amount) || 0;
+    
+      const customer_credit =
+        this.flt(this.redeemed_customer_credit) || 0;
+    
+      const amount_to_pay = this.flt(
+        invoice_total - loyalty_deduction - customer_credit,
+        this.currency_precision
+      );
+    
       // Find the payment that currently has an amount > 0
       const active_payment = this.invoice_doc.payments.find(p => p.amount > 0);
-      
+    
       if (active_payment) {
-        // Update the active payment
         active_payment.amount = amount_to_pay;
       } else {
         // If no active payment, use the default one
