@@ -18,6 +18,61 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-dialog v-model="sales_person_dialog" max-width="400" persistent>
+      <v-card v-if="pending_sales_person_item">
+        <v-card-title class="text-h6">
+          <span class="headline primary--text">{{
+            __("Select Sales Person")
+          }}</span>
+        </v-card-title>
+        <v-card-subtitle class="pb-0">
+          {{ pending_sales_person_item.item_name || pending_sales_person_item.item_code }}
+        </v-card-subtitle>
+        <v-card-text>
+          <v-autocomplete
+            dense
+            clearable
+            auto-select-first
+            outlined
+            color="primary"
+            :label="frappe._('Sales Person')"
+            v-model="pending_sales_person_item.sales_person"
+            :items="sales_persons"
+            item-text="sales_person_name"
+            item-value="name"
+            background-color="white"
+            :no-data-text="__('Sales Person not found')"
+            hide-details
+            autofocus
+            @keyup.enter="confirm_sales_person"
+          >
+            <template v-slot:item="data">
+              <template>
+                <v-list-item-content>
+                  <v-list-item-title
+                    class="primary--text subtitle-1"
+                    v-html="data.item.sales_person_name"
+                  ></v-list-item-title>
+                  <v-list-item-subtitle
+                    v-if="data.item.sales_person_name != data.item.name"
+                    v-html="`ID: ${data.item.name}`"
+                  ></v-list-item-subtitle>
+                </v-list-item-content>
+              </template>
+            </template>
+          </v-autocomplete>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn text color="secondary" @click="skip_sales_person">
+            {{ __("Skip") }}
+          </v-btn>
+          <v-btn color="primary" @click="confirm_sales_person">
+            {{ __("OK") }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <v-card
       style="max-height: 70vh; height: 70vh"
       class="cards my-0 py-0 mt-3 grey lighten-5"
@@ -955,6 +1010,8 @@ export default {
       posting_date: frappe.datetime.nowdate(),
       sales_persons: [],
       sales_person: "",
+      sales_person_dialog: false,
+      pending_sales_person_item: null,
 
       items_headers: [
         {
@@ -1094,6 +1151,7 @@ export default {
         }
         this.items.unshift(new_item);
         this.update_item_detail(new_item);
+        this.open_sales_person_dialog(new_item);
       } else {
         const cur_item = this.items[index];
         this.update_items_details([cur_item]);
@@ -1134,6 +1192,7 @@ export default {
               item.batch_no = null;
             }
             this.items.unshift(new_item);
+            this.open_sales_person_dialog(new_item);
           }
         }
         this.set_serial_no(cur_item);
@@ -1177,6 +1236,31 @@ export default {
         this.expanded.push(new_item);
       }
       return new_item;
+    },
+
+    open_sales_person_dialog(item) {
+      // Nothing to pick from, or the item was removed again (e.g. batch
+      // re-add path) before this ran — don't pop a dialog for nothing.
+      if (!item || !this.sales_persons || !this.sales_persons.length) {
+        return;
+      }
+      this.pending_sales_person_item = item;
+      this.sales_person_dialog = true;
+    },
+
+    confirm_sales_person() {
+      // v-model on the dialog's autocomplete already wrote the choice
+      // straight onto pending_sales_person_item.sales_person.
+      this.sales_person_dialog = false;
+      this.pending_sales_person_item = null;
+    },
+
+    skip_sales_person() {
+      if (this.pending_sales_person_item) {
+        this.pending_sales_person_item.sales_person = "";
+      }
+      this.sales_person_dialog = false;
+      this.pending_sales_person_item = null;
     },
 
     cancel_invoice() {
@@ -1351,33 +1435,58 @@ export default {
       doc.naming_series = doc.naming_series || this.pos_profile.naming_series;
       doc.customer = this.customer;
       doc.items = this.get_invoice_items();
-      const sales_team_map = {};
-      let total_amount = 0;
 
+      const sales_team_map = {};
+      let allocated_total = 0;
+
+      // Only consider items that have a Sales Person
       doc.items.forEach((item) => {
-        const amount = flt(item.qty) * flt(item.rate);
-        total_amount += amount;
-      
-        if (item.sales_person) {
-          if (!sales_team_map[item.sales_person]) {
-            sales_team_map[item.sales_person] = 0;
-          }
-          sales_team_map[item.sales_person] += amount;
+        if (!item.sales_person) {
+          return;
         }
+      
+        const amount = flt(item.qty) * flt(item.rate);
+      
+        if (!sales_team_map[item.sales_person]) {
+          sales_team_map[item.sales_person] = 0;
+        }
+      
+        sales_team_map[item.sales_person] += amount;
+        allocated_total += amount;
       });
 
       doc.sales_team = [];
 
-      Object.keys(sales_team_map).forEach((sp) => {
-        const contribution = sales_team_map[sp];
-        const percent = (contribution / total_amount) * 100;
+      const sales_persons = Object.keys(sales_team_map);
+
+      if (allocated_total > 0) {
+        let percentage_total = 0;
       
-        doc.sales_team.push({
-          doctype: "Sales Team",
-          sales_person: sp,
-          allocated_percentage: percent,
+        sales_persons.forEach((sp, index) => {
+          const amount = sales_team_map[sp];
+        
+          let percentage;
+        
+          if (index === sales_persons.length - 1) {
+            // Give rounding balance to the final Sales Person
+            percentage = flt(100 - percentage_total, 2);
+          } else {
+            percentage = flt(
+              (amount / allocated_total) * 100,
+              2
+            );
+          
+            percentage_total += percentage;
+          }
+        
+          doc.sales_team.push({
+            doctype: "Sales Team",
+            sales_person: sp,
+            allocated_percentage: percentage,
+          });
         });
-      });
+      }
+
       doc.total = this.subtotal;
       doc.discount_amount = flt(this.discount_amount);
       doc.additional_discount_percentage = flt(
@@ -3580,7 +3689,9 @@ export default {
     },
     discount_percentage_offer_name() {
       evntBus.$emit("update_discount_percentage_offer_name", {
-        value: this.discount_percentage_offer_name,
+        // value: this.discount_percentage_offer_name,
+        discount_percentage_offer_name: this.discount_percentage_offer_name,
+        additional_discount_percentage: this.additional_discount_percentage,
       });
     },
     items: {
