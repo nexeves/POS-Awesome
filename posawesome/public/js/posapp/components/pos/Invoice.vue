@@ -3692,6 +3692,11 @@ export default {
         value: this.discount_percentage_offer_name,
       });
     },
+    additional_discount_percentage() {
+      evntBus.$emit("update_additional_discount_percentage", {
+        value: this.additional_discount_percentage,
+      });
+    },
     items: {
       deep: true,
       handler(items) {
@@ -3702,14 +3707,50 @@ export default {
     invoiceType() {
       evntBus.$emit("update_invoice_type", this.invoiceType);
     },
+    // discount_amount() {
+    //   if (!this.discount_amount || this.discount_amount == 0) {
+    //     this.additional_discount_percentage = 0;
+    //   } else if (this.pos_profile.posa_use_percentage_discount) {
+    //     this.additional_discount_percentage =
+    //       (this.discount_amount / this.Total) * 100;
+    //   } else {
+    //     this.additional_discount_percentage = 0;
+    //   }
+    // },
+    // ADD this inside watch:
+    Total(newTotal) {
+      if (
+        this.pos_profile.posa_use_percentage_discount &&
+        flt(this.additional_discount_percentage) > 0 &&
+        flt(newTotal) > 0
+      ) {
+        const percentage = flt(this.additional_discount_percentage);    
+
+        this.discount_amount = this.flt(
+          (flt(newTotal) * percentage) / 100,
+          this.currency_precision
+        );
+      }
+    },    
+
+    // REPLACE the existing discount_amount watcher with:
     discount_amount() {
       if (!this.discount_amount || this.discount_amount == 0) {
-        this.additional_discount_percentage = 0;
-      } else if (this.pos_profile.posa_use_percentage_discount) {
-        this.additional_discount_percentage =
-          (this.discount_amount / this.Total) * 100;
-      } else {
-        this.additional_discount_percentage = 0;
+        if (this.additional_discount_percentage != 0) {
+          this.additional_discount_percentage = 0;
+        }
+      } else if (
+        this.pos_profile.posa_use_percentage_discount &&
+        this.Total > 0
+      ) {
+        const percentage = this.flt(
+          (this.discount_amount / this.Total) * 100,
+          this.float_precision
+        );    
+
+        if (percentage !== this.additional_discount_percentage) {
+          this.additional_discount_percentage = percentage;
+        }
       }
     },
   },

@@ -30,7 +30,8 @@
                     (!offer.replace_cheapest_item || !offer.replace_item)) ||
                   (item.offer == 'Grand Total' &&
                     discount_percentage_offer_name &&
-                    discount_percentage_offer_name != item.name)
+                    discount_percentage_offer_name != item.name) ||
+                  additional_discount_percentage > 0
                 "
               ></v-simple-checkbox>
             </template>
@@ -101,6 +102,7 @@ export default {
     pos_offers: [],
     allItems: [],
     discount_percentage_offer_name: null,
+    additional_discount_percentage: 0,
     itemsPerPage: 1000,
     expanded: [],
     singleExpand: true,
@@ -283,6 +285,20 @@ export default {
         this.updatePosCoupuns();
       },
     },
+    additional_discount_percentage(newVal) {
+      if (newVal > 0) {
+        let changed = false;
+        this.pos_offers.forEach((offer) => {
+          if (offer.offer_applied) {
+            offer.offer_applied = false;
+            changed = true;
+          }
+        });
+        if (changed) {
+          this.forceUpdateItem();
+        }
+      }
+    },
   },
 
   created: function () {
@@ -302,9 +318,13 @@ export default {
     evntBus.$on('update_discount_percentage_offer_name', (data) => {
       this.discount_percentage_offer_name = data.value;
     });
+    evntBus.$on('update_additional_discount_percentage', (data) => {
+      this.additional_discount_percentage = data.value;
+    });
     evntBus.$on('set_all_items', (data) => {
       this.allItems = data;
     });
+    evntBus.$emit('get_additional_discount_percentage');
   },
 };
 </script>
