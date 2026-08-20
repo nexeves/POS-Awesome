@@ -11,6 +11,8 @@
 import Navbar from './components/Navbar.vue';
 import POS from './components/pos/Pos.vue';
 import Payments from './components/payments/Pay.vue';
+import EcommerceOrders from './components/ecommerce/EcommerceOrders.vue';
+import { evntBus } from './bus';
 
 export default {
   data: function () {
@@ -22,6 +24,7 @@ export default {
     Navbar,
     POS,
     Payments,
+    EcommerceOrders,
   },
   methods: {
     setPage(page) {
@@ -39,9 +42,15 @@ export default {
   },
   updated() {},
   created: function () {
+    // Lets a page navigate on its own, not just the Navbar — the Ecommerce
+    // Orders page uses it to jump back to POS with an order in hand.
+    evntBus.$on('change_page', this.setPage);
     setTimeout(() => {
       this.remove_frappe_nav();
     }, 1000);
+  },
+  beforeDestroy() {
+    evntBus.$off('change_page', this.setPage);
   },
 };
 </script>
