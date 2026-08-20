@@ -22,6 +22,25 @@
       </v-toolbar-title>
 
       <v-spacer></v-spacer>
+      <v-btn
+        v-if="show_ecommerce_bell"
+        icon
+        color="primary"
+        class="mr-2"
+        :title="__('Online Orders')"
+        @click="open_ecommerce_orders"
+      >
+        <v-badge
+          :content="ecommerce_count"
+          :value="ecommerce_count"
+          color="badge"
+          overlap
+        >
+          <v-icon>{{
+            ecommerce_count ? 'mdi-bell-ring' : 'mdi-bell-outline'
+          }}</v-icon>
+        </v-badge>
+      </v-btn>
       <v-btn style="cursor: unset" text color="primary">
         <span right>{{ pos_profile.name }}</span>
       </v-btn>
@@ -117,7 +136,9 @@
               <v-icon v-text="item.icon"></v-icon>
             </v-list-item-icon>
             <v-list-item-content>
-              <v-list-item-title v-text="item.text"></v-list-item-title>
+              <v-list-item-title
+                v-text="item.label || item.text"
+              ></v-list-item-title>
             </v-list-item-content>
           </v-list-item>
         </v-list-item-group>
@@ -147,7 +168,7 @@ export default {
       drawer: false,
       mini: true,
       item: 0,
-      items: [{ text: 'POS', icon: 'mdi-network-pos' }],
+      items: [{ text: 'POS', label: 'POS', icon: 'mdi-network-pos' }],
       page: '',
       fav: true,
       menu: false,
@@ -164,11 +185,97 @@ export default {
       freezeTitle: '',
       freezeMsg: '',
       last_invoice: '',
+      ecommerce_count: 0,
+      ecommerce_poll: null,
+      ecommerce_subscribed: false,
     };
+  },
+  computed: {
+    show_ecommerce_bell() {
+      return !!this.pos_profile.posa_allow_ecommerce_orders;
+    },
   },
   methods: {
     changePage(key) {
       this.$emit('changePage', key);
+    },
+    add_page(entry) {
+      // Keyed on `text` (the component name) rather than on a hardcoded array
+      // length, so adding a page never silently suppresses another one.
+      if (!this.items.some((item) => item.text === entry.text)) {
+        this.items.push(entry);
+      }
+    },
+    open_ecommerce_orders() {
+      this.$emit('changePage', 'EcommerceOrders');
+    },
+    fetch_ecommerce_count() {
+      if (!this.show_ecommerce_bell || !this.pos_profile.name) return;
+      frappe.call({
+        method:
+          'posawesome.posawesome.api.ecommerce_orders.get_ecommerce_orders_count',
+        args: { pos_profile: JSON.stringify(this.pos_profile) },
+        callback: (r) => {
+          this.ecommerce_count = r.message || 0;
+        },
+      });
+    },
+    on_ecommerce_order_created(data) {
+      // The publish is a site-wide broadcast (the customer's own session has no
+      // idea which cashiers are on shift), so each terminal filters to its own
+      // branch here.
+      if (!this.show_ecommerce_bell) return;
+      if (
+        this.pos_profile.warehouse &&
+        data &&
+        data.set_warehouse &&
+        data.set_warehouse !== this.pos_profile.warehouse
+      ) {
+        return;
+      }
+      frappe.utils.play_sound('alert');
+      evntBus.$emit('show_mesage', {
+        text: __('New online order {0} from {1}', [
+          data.name,
+          data.customer_name || data.customer,
+        ]),
+        color: 'info',
+      });
+      // Re-read the count from the server rather than incrementing locally, so
+      // the badge cannot drift out of step with reality.
+      this.fetch_ecommerce_count();
+      evntBus.$emit('new_ecommerce_order', data);
+    },
+    subscribe_ecommerce_realtime(attempt = 0) {
+      // frappe.realtime.on silently does nothing when the socket has not
+      // connected yet, which would leave the bell permanently mute with no
+      // error to show for it. Retry briefly until the socket exists.
+      if (frappe.socketio && frappe.socketio.socket) {
+        frappe.realtime.on(
+          'ecommerce_order_created',
+          this.on_ecommerce_order_created
+        );
+        this.ecommerce_subscribed = true;
+        return;
+      }
+      if (attempt < 20) {
+        setTimeout(() => this.subscribe_ecommerce_realtime(attempt + 1), 500);
+      } else {
+        console.warn(
+          'posawesome: socket unavailable, falling back to polling for online orders'
+        );
+      }
+    },
+    start_ecommerce_watch() {
+      if (!this.show_ecommerce_bell) return;
+      this.fetch_ecommerce_count();
+      if (!this.ecommerce_poll) {
+        // Reconciliation sweep: realtime is the fast path, this catches
+        // anything missed while the socket was down or the tab was asleep.
+        this.ecommerce_poll = setInterval(() => {
+          this.fetch_ecommerce_count();
+        }, 60000);
+      }
     },
     go_desk() {
       frappe.set_route('/');
@@ -241,13 +348,21 @@ export default {
       });
       evntBus.$on('register_pos_profile', (data) => {
         this.pos_profile = data.pos_profile;
-        const payments = { text: 'Payments', icon: 'mdi-cash-register' };
-        if (
-          this.pos_profile.posa_use_pos_awesome_payments &&
-          this.items.length !== 2
-        ) {
-          this.items.push(payments);
+        if (this.pos_profile.posa_use_pos_awesome_payments) {
+          this.add_page({
+            text: 'Payments',
+            label: 'Payments',
+            icon: 'mdi-cash-register',
+          });
         }
+        if (this.pos_profile.posa_allow_ecommerce_orders) {
+          this.add_page({
+            text: 'EcommerceOrders',
+            label: 'Online Orders',
+            icon: 'mdi-cart-outline',
+          });
+        }
+        this.start_ecommerce_watch();
       });
       evntBus.$on('set_last_invoice', (data) => {
         this.last_invoice = data;
@@ -262,7 +377,23 @@ export default {
         this.freezTitle = '';
         this.freezeMsg = '';
       });
+      evntBus.$on('ecommerce_orders_seen', () => {
+        this.fetch_ecommerce_count();
+      });
+      this.subscribe_ecommerce_realtime();
     });
+  },
+  beforeDestroy() {
+    if (this.ecommerce_subscribed) {
+      frappe.realtime.off(
+        'ecommerce_order_created',
+        this.on_ecommerce_order_created
+      );
+    }
+    if (this.ecommerce_poll) {
+      clearInterval(this.ecommerce_poll);
+      this.ecommerce_poll = null;
+    }
   },
 };
 </script>

@@ -872,6 +872,7 @@
 
 <script>
 import { evntBus } from "../../bus";
+import { posStore } from "../../store";
 import format from "../../format";
 import Customer from "./Customer.vue";
 
@@ -1303,6 +1304,26 @@ export default {
       return old_invoice;
     },
 
+    // An order picked on the Ecommerce Orders page is parked in posStore
+    // because this component did not exist at the moment of the click — the
+    // page switch destroys and rebuilds it. Claim it here, where the POS
+    // profile and the open shift are both known to be loaded.
+    load_pending_ecommerce_order() {
+      const order = posStore.pending_ecommerce_order;
+      if (!order) return;
+      posStore.pending_ecommerce_order = null;
+      this.new_order(order);
+      // The order is being billed now, so the cart is an Invoice regardless of
+      // the profile's default type. This also re-enables the stock check in
+      // validate(), which only runs for invoices.
+      this.invoiceType = "Invoice";
+      this.invoiceTypes = ["Invoice"];
+      evntBus.$emit("show_mesage", {
+        text: __("Online order {0} loaded", [order.name]),
+        color: "success",
+      });
+    },
+
     get_invoice_doc() {
       let doc = {};
       if (this.invoice_doc.name) {
@@ -1338,7 +1359,22 @@ export default {
 
     async get_invoice_from_order_doc() {
       let doc = {};
-      if (this.invoice_doc.doctype == "Sales Order") {
+      if (this.invoice_doc.doctype == "Ecommerce Sales Order") {
+        await frappe.call({
+          method:
+            "posawesome.posawesome.api.ecommerce_orders.create_sales_invoice_from_ecommerce_order",
+          args: {
+            ecommerce_sales_order: this.invoice_doc.name,
+            pos_profile: JSON.stringify(this.pos_profile),
+            pos_opening_shift: this.pos_opening_shift.name,
+          },
+          callback: function (r) {
+            if (r.message) {
+              doc = r.message;
+            }
+          },
+        });
+      } else if (this.invoice_doc.doctype == "Sales Order") {
         await frappe.call({
           method:
             "posawesome.posawesome.api.posapp.create_sales_invoice_from_order",
@@ -1545,7 +1581,10 @@ export default {
       if (!this.validate()) {
         return;
       }
-      if (this.invoice_doc.doctype == "Sales Order") {
+      if (
+        this.invoice_doc.doctype == "Sales Order" ||
+        this.invoice_doc.doctype == "Ecommerce Sales Order"
+      ) {
         evntBus.$emit("show_payment", "true");
         const invoice_doc = await this.process_invoice_from_order();
         evntBus.$emit("send_invoice_doc_payment", invoice_doc);
@@ -3021,6 +3060,7 @@ export default {
       this.invoiceType = this.pos_profile.posa_default_sales_order
         ? "Order"
         : "Invoice";
+      this.load_pending_ecommerce_order();
     });
     evntBus.$on("add_item", (item) => {
       this.add_item(item);
