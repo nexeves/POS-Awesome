@@ -64,6 +64,26 @@
             <template v-slot:item.grand_total="{ item }">
               {{ currencySymbol(item.currency) }}
               {{ formtCurrency(item.grand_total) }}
+              <!--
+                The cashier has to see this before they open anything: an order
+                paid by card in the app is a hand-over, not a sale to ring up.
+                Collecting again would charge the customer twice.
+              -->
+              <v-chip
+                v-if="item.online_paid"
+                x-small
+                label
+                dark
+                color="teal"
+                class="ml-2"
+                :title="
+                  __('Already paid online') +
+                  (item.online_card_name ? ' — ' + item.online_card_name : '')
+                "
+              >
+                <v-icon x-small class="mr-1">mdi-credit-card-check-outline</v-icon>
+                {{ __("PAID ONLINE") }}
+              </v-chip>
             </template>
 
             <template v-slot:item.ecommerce_status="{ item }">
@@ -111,7 +131,7 @@
                 @click="load_to_pos(item)"
               >
                 <v-icon small class="mr-1">mdi-cart-arrow-down</v-icon>
-                {{ __("Load to POS") }}
+                {{ item.online_paid ? __("Hand Over") : __("Load to POS") }}
               </v-btn>
               <v-icon v-else color="success">mdi-check-circle</v-icon>
             </template>

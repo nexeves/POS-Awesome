@@ -47,9 +47,47 @@ LIST_FIELDS = [
     "creation",
 ]
 
+PAYMENT_DOCTYPE = "Ecommerce Payment"
+
+# Statuses on an Ecommerce Payment that mean money was actually collected.
+# A partially refunded order still had money taken, so the remaining balance
+# is what the invoice should show as already settled.
+PREPAID_STATUSES = ("Paid", "Partially Refunded")
+
 
 def _ecommerce_installed():
     return bool(frappe.db.exists("DocType", ESO_DOCTYPE))
+
+
+def _payments_installed():
+    return bool(frappe.db.exists("DocType", PAYMENT_DOCTYPE))
+
+
+def _prepayment_for(order_name):
+    """What the customer already paid online for this order, if anything.
+
+    Returns None for an order that was not paid by card. Cashiers must not be
+    asked to collect money that has already been taken, so every path that
+    puts an order in front of them consults this.
+    """
+    if not _payments_installed():
+        return None
+
+    payment_name = frappe.db.get_value(ESO_DOCTYPE, order_name, "custom_ecommerce_payment")
+    if not payment_name:
+        return None
+
+    payment = frappe.db.get_value(
+        PAYMENT_DOCTYPE,
+        payment_name,
+        ["name", "status", "amount", "refunded_amount", "currency", "card_name", "masked_card"],
+        as_dict=True,
+    )
+    if not payment or payment.status not in PREPAID_STATUSES:
+        return None
+
+    payment["net_paid"] = flt(payment.amount) - flt(payment.refunded_amount)
+    return payment if payment["net_paid"] > 0 else None
 
 
 def _parse_profile(pos_profile):
@@ -121,6 +159,45 @@ def _attach_invoices(orders):
     for order in orders:
         order["invoices"] = by_order.get(order["name"], [])
 
+    return _attach_prepayments(orders)
+
+
+def _attach_prepayments(orders):
+    """Flag the orders that were already paid by card in the app.
+
+    Same one-query-per-page shape as `_attach_invoices`. The cashier needs to
+    see this on the list, before they open anything — an order that is already
+    paid is a hand-over, not a sale to ring up.
+    """
+    if not orders or not _payments_installed():
+        for order in orders:
+            order["online_paid"] = 0
+            order["online_paid_amount"] = 0
+        return orders
+
+    by_payment = {
+        o["name"]: frappe.db.get_value(ESO_DOCTYPE, o["name"], "custom_ecommerce_payment")
+        for o in orders
+    }
+    payment_names = [p for p in by_payment.values() if p]
+
+    paid = {}
+    if payment_names:
+        for row in frappe.get_all(
+            PAYMENT_DOCTYPE,
+            filters={"name": ["in", payment_names], "status": ["in", PREPAID_STATUSES]},
+            fields=["name", "amount", "refunded_amount", "card_name"],
+            limit_page_length=0,
+        ):
+            paid[row["name"]] = row
+
+    for order in orders:
+        row = paid.get(by_payment.get(order["name"]))
+        net = flt(row["amount"]) - flt(row["refunded_amount"]) if row else 0
+        order["online_paid"] = 1 if net > 0 else 0
+        order["online_paid_amount"] = net
+        order["online_card_name"] = row["card_name"] if row else None
+
     return orders
 
 
@@ -168,7 +245,16 @@ def get_ecommerce_order(ecommerce_sales_order):
     """Full order doc, for loading into the POS cart."""
     if not _ecommerce_installed():
         return None
-    return frappe.get_doc(ESO_DOCTYPE, ecommerce_sales_order).as_dict()
+
+    order = frappe.get_doc(ESO_DOCTYPE, ecommerce_sales_order).as_dict()
+
+    prepaid = _prepayment_for(ecommerce_sales_order)
+    order["online_paid"] = 1 if prepaid else 0
+    order["online_paid_amount"] = prepaid["net_paid"] if prepaid else 0
+    order["online_card_name"] = prepaid["card_name"] if prepaid else None
+    order["online_masked_card"] = prepaid["masked_card"] if prepaid else None
+
+    return order
 
 
 @frappe.whitelist()
@@ -293,8 +379,60 @@ def create_sales_invoice_from_ecommerce_order(
             },
         )
 
+    _apply_online_prepayment(invoice, order)
+
     invoice.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice.save()
 
     return invoice
+
+
+def _apply_online_prepayment(invoice, order):
+    """Settle the invoice with money the customer already paid in the app.
+
+    Without this the cashier is shown an unpaid invoice for an order that was
+    paid by card at checkout, and collecting again would charge the customer
+    twice. The prepaid amount is recorded against its own Mode of Payment so
+    it lands in the right ledger and is not mistaken for cash in the till at
+    shift close.
+    """
+    prepaid = _prepayment_for(order.name)
+    if not prepaid:
+        return
+
+    mode = frappe.db.get_single_value("SmartPay Settings", "mode_of_payment")
+    if not mode:
+        # Refuse rather than silently present an unpaid invoice: being told
+        # to configure something is recoverable, charging a customer twice
+        # is not.
+        frappe.throw(
+            _(
+                "Order {0} was already paid online, but no Mode of Payment is configured "
+                "in SmartPay Settings to record it against. Set one before billing online orders."
+            ).format(order.name)
+        )
+
+    # Only ever what this invoice is actually for. A partially invoiced order,
+    # or one partially refunded, must not settle more than its own total.
+    # `rounded_total` is only meaningful when rounding is on for this document;
+    # reading it unconditionally would leave a few baisa outstanding on a site
+    # that has rounding disabled, and the cashier would ask a customer who has
+    # already paid in full for the difference.
+    payable = (
+        flt(invoice.grand_total)
+        if invoice.get("disable_rounded_total")
+        else flt(invoice.rounded_total or invoice.grand_total)
+    )
+    applied = min(flt(prepaid["net_paid"]), payable)
+
+    for row in invoice.payments:
+        if row.mode_of_payment == mode:
+            row.amount = applied
+            break
+    else:
+        invoice.append("payments", {"mode_of_payment": mode, "amount": applied, "default": 0})
+
+    invoice.custom_ecommerce_payment = prepaid["name"]
+    # Read by Invoice.vue to show the cashier that nothing is left to collect.
+    invoice.set_onload("posa_online_prepaid_amount", applied)
