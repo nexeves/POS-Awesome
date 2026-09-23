@@ -220,6 +220,13 @@ export default {
       });
     });
   },
+  activated() {
+    // `mounted` only runs once now that pages are kept alive, so this is where
+    // the cart hears that it is back on screen — and picks up an order chosen
+    // on the Online Orders page while it was in the background.
+    evntBus.$emit('pos_page_activated');
+  },
+
   beforeDestroy() {
     evntBus.$off('close_opening_dialog');
     evntBus.$off('register_pos_data');

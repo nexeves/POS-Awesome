@@ -188,6 +188,7 @@ export default {
       ecommerce_count: 0,
       ecommerce_poll: null,
       ecommerce_subscribed: false,
+      audio_ctx: null,
     };
   },
   computed: {
@@ -233,7 +234,7 @@ export default {
       ) {
         return;
       }
-      frappe.utils.play_sound('alert');
+      this.play_new_order_tone();
       evntBus.$emit('show_mesage', {
         text: __('New online order {0} from {1}', [
           data.name,
@@ -246,6 +247,63 @@ export default {
       this.fetch_ecommerce_count();
       evntBus.$emit('new_ecommerce_order', data);
     },
+    // A tone of its own for an order arriving from the app.
+    //
+    // play_sound('alert') is the same short blip the desk uses for every
+    // notification; over counter noise it does not read as "an order just came
+    // in", and a cashier who is used to it stops hearing it. This is a rising
+    // three-note chime played twice, which is unlike anything else the POS
+    // makes and carries across a shop.
+    //
+    // Synthesised rather than shipped as an audio file: no new asset to build
+    // or cache-bust, and it still sounds on a terminal whose desk page did not
+    // give us the <audio> elements play_sound depends on. Those remain the
+    // fallback if the browser offers no Web Audio at all.
+    play_new_order_tone() {
+      if (frappe.boot && frappe.boot.user && frappe.boot.user.mute_sounds) {
+        return;
+      }
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) throw new Error('Web Audio unavailable');
+        if (!this.audio_ctx || this.audio_ctx.state === 'closed') {
+          this.audio_ctx = new Ctx();
+        }
+        const ctx = this.audio_ctx;
+        // Autoplay policy suspends a context built before the first gesture.
+        // A cashier on an open shift has clicked something long ago, so
+        // resuming is all that is needed.
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+
+        const notes = [1046.5, 1318.5, 1568.0]; // C6 - E6 - G6
+        const note_len = 0.13;
+        const pass_gap = 0.55;
+        for (let pass = 0; pass < 2; pass++) {
+          notes.forEach((freq, i) => {
+            const at = ctx.currentTime + pass * pass_gap + i * note_len;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = freq;
+            // Ramped, not switched: a square edge on a raw oscillator is an
+            // audible click on most counter speakers.
+            gain.gain.setValueAtTime(0.0001, at);
+            gain.gain.exponentialRampToValueAtTime(0.35, at + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, at + note_len);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(at);
+            osc.stop(at + note_len + 0.02);
+          });
+        }
+      } catch (e) {
+        console.warn('posawesome: new-order tone unavailable', e);
+        frappe.utils.play_sound('chime');
+      }
+    },
+
     subscribe_ecommerce_realtime(attempt = 0) {
       // frappe.realtime.on silently does nothing when the socket has not
       // connected yet, which would leave the bell permanently mute with no

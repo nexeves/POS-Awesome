@@ -379,7 +379,12 @@ def create_sales_invoice_from_ecommerce_order(
             },
         )
 
-    _apply_online_prepayment(invoice, order)
+    # The prepaid amount is capped against what this invoice asks for, so its
+    # totals have to be current before that is worked out. The mapper computed
+    # them, but the warehouse and POS fields set above are change enough to be
+    # worth recomputing rather than assuming.
+    invoice.run_method("calculate_taxes_and_totals")
+    _apply_online_prepayment(invoice, order.name)
 
     invoice.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
@@ -388,7 +393,56 @@ def create_sales_invoice_from_ecommerce_order(
     return invoice
 
 
-def _apply_online_prepayment(invoice, order):
+def _prepaid_mode_of_payment():
+    """Mode of Payment the already-collected card money is recorded against.
+
+    Deliberately has no default: which ledger online card receipts land in is
+    an accounting decision, not one to guess. Callers treat a missing value as
+    a hard error rather than quietly presenting an unpaid invoice.
+    """
+    return frappe.db.get_single_value("SmartPay Settings", "mode_of_payment")
+
+
+def _check_prepaid_mode_account(mode, company, order_name):
+    """The online Mode of Payment needs a default account for this company.
+
+    ERPNext resolves that account while saving the invoice and throws there if
+    it is missing — halfway through the POS flow, in a message that says
+    nothing about online orders. A site can genuinely arrive here unconfigured:
+    `alrasam.create_smartpay_fields` creates the Mode of Payment but leaves its
+    account blank on purpose, because which ledger online card receipts land in
+    is an accounting decision rather than something to guess.
+
+    Saying so up front, before anything is saved, is the difference between a
+    cashier who can act on it and one who files a bug.
+    """
+    if frappe.db.get_value(
+        "Mode of Payment Account", {"parent": mode, "company": company}, "default_account"
+    ):
+        return
+
+    frappe.throw(
+        _(
+            "Order {0} was already paid online, but Mode of Payment {1} has no default "
+            "account for {2}. Set one in Mode of Payment before billing online orders."
+        ).format(order_name, mode, company)
+    )
+
+
+def _payable_total(invoice):
+    """What this invoice actually asks for.
+
+    `rounded_total` is only meaningful when rounding is on for this document;
+    reading it unconditionally would leave a few baisa outstanding on a site
+    that has rounding disabled, and the cashier would ask a customer who has
+    already paid in full for the difference.
+    """
+    if invoice.get("disable_rounded_total"):
+        return flt(invoice.grand_total)
+    return flt(invoice.rounded_total or invoice.grand_total)
+
+
+def _apply_online_prepayment(invoice, order_name):
     """Settle the invoice with money the customer already paid in the app.
 
     Without this the cashier is shown an unpaid invoice for an order that was
@@ -396,12 +450,20 @@ def _apply_online_prepayment(invoice, order):
     twice. The prepaid amount is recorded against its own Mode of Payment so
     it lands in the right ledger and is not mistaken for cash in the till at
     shift close.
-    """
-    prepaid = _prepayment_for(order.name)
-    if not prepaid:
-        return
 
-    mode = frappe.db.get_single_value("SmartPay Settings", "mode_of_payment")
+    Safe to run repeatedly on the same invoice: it rewrites the online row
+    rather than appending another one. That is what makes it usable as the
+    guard at submit as well as at draft time — the cashier can edit the cart
+    in between, and the cap has to be recomputed against whatever the invoice
+    asks for now.
+
+    Returns the amount settled; 0 for an order that was not paid online.
+    """
+    prepaid = _prepayment_for(order_name)
+    if not prepaid:
+        return 0
+
+    mode = _prepaid_mode_of_payment()
     if not mode:
         # Refuse rather than silently present an unpaid invoice: being told
         # to configure something is recoverable, charging a customer twice
@@ -410,21 +472,14 @@ def _apply_online_prepayment(invoice, order):
             _(
                 "Order {0} was already paid online, but no Mode of Payment is configured "
                 "in SmartPay Settings to record it against. Set one before billing online orders."
-            ).format(order.name)
+            ).format(order_name)
         )
+
+    _check_prepaid_mode_account(mode, invoice.company, order_name)
 
     # Only ever what this invoice is actually for. A partially invoiced order,
     # or one partially refunded, must not settle more than its own total.
-    # `rounded_total` is only meaningful when rounding is on for this document;
-    # reading it unconditionally would leave a few baisa outstanding on a site
-    # that has rounding disabled, and the cashier would ask a customer who has
-    # already paid in full for the difference.
-    payable = (
-        flt(invoice.grand_total)
-        if invoice.get("disable_rounded_total")
-        else flt(invoice.rounded_total or invoice.grand_total)
-    )
-    applied = min(flt(prepaid["net_paid"]), payable)
+    applied = min(flt(prepaid["net_paid"]), _payable_total(invoice))
 
     for row in invoice.payments:
         if row.mode_of_payment == mode:
@@ -434,5 +489,72 @@ def _apply_online_prepayment(invoice, order):
         invoice.append("payments", {"mode_of_payment": mode, "amount": applied, "default": 0})
 
     invoice.custom_ecommerce_payment = prepaid["name"]
-    # Read by Invoice.vue to show the cashier that nothing is left to collect.
+
+    # Read by Payments.vue, which locks that row and works the rest of the
+    # screen out from what is left to collect. `__onload` rides along with
+    # `as_dict`, so it reaches the browser with the doc — but it does not
+    # survive a reload from the database, which is why every entry point that
+    # hands the invoice back comes through here rather than setting it once.
     invoice.set_onload("posa_online_prepaid_amount", applied)
+    invoice.set_onload("posa_online_mode_of_payment", mode)
+    invoice.set_onload("posa_online_card_name", prepaid.get("card_name"))
+    invoice.set_onload("posa_online_masked_card", prepaid.get("masked_card"))
+    # A customer who paid for more than the invoice now asks for is owed the
+    # difference back through the gateway. The cashier must not hand that over
+    # as cash from the till, so the screen has to be able to say so.
+    invoice.set_onload("posa_online_overpaid_amount", flt(prepaid["net_paid"]) - applied)
+
+    return applied
+
+
+@frappe.whitelist()
+def update_invoice_from_ecommerce_order(data):
+    """Save the cashier's edits to an online order's draft invoice.
+
+    The generic `update_invoice_from_order` cannot be used for these. The cart
+    rebuilds `payments` from the POS profile on every trip to the server, which
+    drops the online row entirely, and the cap on what was prepaid has to be
+    recomputed against whatever the cart now totals — a cashier may have
+    changed a line since the invoice was drafted.
+    """
+    if isinstance(data, str):
+        data = json.loads(data)
+
+    invoice_doc = frappe.get_doc("Sales Invoice", data.get("name"))
+    invoice_doc.update(data)
+    invoice_doc.flags.ignore_permissions = True
+    frappe.flags.ignore_account_permission = True
+
+    # Totals are otherwise only recomputed inside validate, i.e. after the
+    # point where the cap has to be applied. Computing them here keeps this to
+    # a single save.
+    invoice_doc.run_method("calculate_taxes_and_totals")
+    _apply_online_prepayment(invoice_doc, invoice_doc.get("custom_ecommerce_sales_order"))
+
+    invoice_doc.save()
+    return invoice_doc
+
+
+def enforce_online_prepayment(invoice_doc):
+    """Last word on what the online row is worth, applied on the way to submit.
+
+    The payment screen exists to let a cashier move amounts between payment
+    rows, so the browser cannot be the thing that guarantees the card money is
+    recorded exactly once. Zeroing the online row and taking cash instead, or
+    inflating it past what the gateway actually took, both end here.
+
+    A no-op for every invoice that did not come from a prepaid online order,
+    which is the overwhelming majority of what goes through the till.
+    """
+    if not invoice_doc.get("custom_ecommerce_sales_order"):
+        return
+    if not _ecommerce_installed():
+        return
+    # A credit note is a refund, not a collection, and its total is negative —
+    # settling it against the card row would record the gateway paying the
+    # customer a second time. The link field is no_copy so a return should
+    # never carry it, but that is one fixture edit away from not being true.
+    if invoice_doc.get("is_return"):
+        return
+
+    _apply_online_prepayment(invoice_doc, invoice_doc.get("custom_ecommerce_sales_order"))

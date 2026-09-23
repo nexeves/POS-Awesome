@@ -72,6 +72,53 @@
         </v-row>
         <v-divider></v-divider>
 
+        <!--
+          The one thing the cashier must not miss on this screen: the money for
+          this order was already taken by the gateway. Without it they read a
+          zero "To Be Paid" as a mistake and go looking for something to collect.
+        -->
+        <v-alert
+          v-if="is_online_prepaid"
+          dense
+          text
+          :type="collectable_total > 0 ? 'info' : 'success'"
+          class="mx-1 my-2 py-2 text-caption"
+        >
+          <div>
+            {{
+              __("Paid online: {0}{1}", [
+                currencySymbol(invoice_doc.currency),
+                formtCurrency(online_prepaid_amount),
+              ])
+            }}
+            <span v-if="online_card_label"> — {{ online_card_label }}</span>
+          </div>
+          <div class="font-weight-bold">
+            <span v-if="collectable_total > 0">
+              {{
+                __("Still to collect: {0}{1}", [
+                  currencySymbol(invoice_doc.currency),
+                  formtCurrency(collectable_total),
+                ])
+              }}
+            </span>
+            <span v-else>
+              {{ __("Nothing to collect — hand the goods over") }}
+            </span>
+          </div>
+          <div v-if="online_overpaid_amount > 0" class="error--text">
+            {{
+              __(
+                "Customer paid {0}{1} more than this invoice. Refund it through the app, not from the till.",
+                [
+                  currencySymbol(invoice_doc.currency),
+                  formtCurrency(online_overpaid_amount),
+                ]
+              )
+            }}
+          </div>
+        </v-alert>
+
         <div v-if="is_cashback">
           <v-row
             class="pyments px-1 py-0"
@@ -83,7 +130,7 @@
                 dense
                 outlined
                 color="primary"
-                :label="frappe._(payment.mode_of_payment)"
+                :label="payment_label(payment)"
                 background-color="white"
                 hide-details
                 :value="formtCurrency(payment.amount)"
@@ -93,7 +140,11 @@
                 :rules="[isNumber]"
                 :prefix="currencySymbol(invoice_doc.currency)"
                 @focus="set_rest_amount(payment.idx)"
-                :readonly="invoice_doc.is_return ? true : false || payments_readonly"
+                :readonly="
+                  invoice_doc.is_return ||
+                  payments_readonly ||
+                  is_online_payment(payment)
+                "
               ></v-text-field>
             </v-col>
             <v-col
@@ -113,7 +164,7 @@
                 color="primary"
                 dark
                 @click="set_full_amount(payment.idx)"
-                :disabled="payments_readonly"
+                :disabled="payments_readonly || is_online_payment(payment)"
                 >{{ payment.mode_of_payment }}</v-btn
               >
             </v-col>
@@ -1004,16 +1055,38 @@ export default {
         },
       });
     },
+    // True for the row holding money the gateway already took. Nothing on this
+    // screen may rewrite it — the server has the last word on it at submit,
+    // but letting the cashier move it here would still show them a bill to
+    // collect that the customer has already paid.
+    // The field carries `hide-details`, so a hint would never render — the
+    // label is the only place left to say that this row is not the cashier's
+    // to collect.
+    payment_label(payment) {
+      if (this.is_online_payment(payment)) {
+        return __("{0} (paid online)", [payment.mode_of_payment]);
+      }
+      return frappe._(payment.mode_of_payment);
+    },
+
+    is_online_payment(payment) {
+      return (
+        !!this.online_mode_of_payment &&
+        payment.mode_of_payment === this.online_mode_of_payment
+      );
+    },
+
     set_full_amount(idx) {
+      // "Full" is the rest of the bill, not the whole bill.
       this.invoice_doc.payments.forEach((payment) => {
-        payment.amount =
-          payment.idx == idx
-            ? this.invoice_doc.rounded_total || this.invoice_doc.grand_total
-            : 0;
+        if (this.is_online_payment(payment)) return;
+        payment.amount = payment.idx == idx ? this.collectable_total : 0;
       });
     },
     set_rest_amount(idx) {
       this.invoice_doc.payments.forEach((payment) => {
+        // A readonly field still takes focus, and this fires on focus.
+        if (this.is_online_payment(payment)) return;
         if (
           payment.idx == idx &&
           payment.amount == 0 &&
@@ -1025,6 +1098,7 @@ export default {
     },
     clear_all_amounts() {
       this.invoice_doc.payments.forEach((payment) => {
+        if (this.is_online_payment(payment)) return;
         payment.amount = 0;
       });
     },
@@ -1418,8 +1492,61 @@ export default {
   },
 
   computed: {
+    // What the gateway already took for this order, as the server worked it
+    // out. It rides on the invoice's `__onload`, which is re-set by every
+    // server entry point that hands the invoice back — a plain field would
+    // have to be capped again in the browser, and the browser is exactly what
+    // must not be trusted with that number.
+    online_prepaid_amount() {
+      const onload = (this.invoice_doc && this.invoice_doc.__onload) || {};
+      return this.flt(
+        onload.posa_online_prepaid_amount,
+        this.currency_precision
+      );
+    },
+
+    online_mode_of_payment() {
+      const onload = (this.invoice_doc && this.invoice_doc.__onload) || {};
+      return onload.posa_online_mode_of_payment || null;
+    },
+
+    online_overpaid_amount() {
+      const onload = (this.invoice_doc && this.invoice_doc.__onload) || {};
+      return this.flt(
+        onload.posa_online_overpaid_amount,
+        this.currency_precision
+      );
+    },
+
+    online_card_label() {
+      const onload = (this.invoice_doc && this.invoice_doc.__onload) || {};
+      return onload.posa_online_masked_card || onload.posa_online_card_name || "";
+    },
+
+    is_online_prepaid() {
+      return this.online_prepaid_amount > 0;
+    },
+
+    // What is left for the cashier to take. The same number for an ordinary
+    // sale, where nothing was prepaid, which is why every "full amount" path
+    // can use it unconditionally.
+    collectable_total() {
+      if (!this.invoice_doc) return 0;
+      const total = this.flt(
+        this.invoice_doc.rounded_total || this.invoice_doc.grand_total,
+        this.currency_precision
+      );
+      const rest = this.flt(
+        total - this.online_prepaid_amount,
+        this.currency_precision
+      );
+      return rest > 0 ? rest : 0;
+    },
+
     total_payments() {
-      let total = parseFloat(this.invoice_doc.loyalty_amount);
+      // flt rather than parseFloat: an invoice that reaches this screen with a
+      // null loyalty_amount used to turn every figure on it into NaN.
+      let total = this.flt(this.invoice_doc.loyalty_amount);
       if (this.invoice_doc && this.invoice_doc.payments) {
         this.invoice_doc.payments.forEach((payment) => {
           total += this.flt(payment.amount);
@@ -1538,10 +1665,21 @@ export default {
         this.is_credit_sale = 0;
         this.is_write_off_change = 0;
         if (default_payment && !invoice_doc.is_return) {
-          default_payment.amount = this.flt(
+          // Only what is actually left to take. Filling the default mode with
+          // the whole total on an order the customer already paid for by card
+          // is how they end up charged twice — the prepaid row is already
+          // sitting in `payments` for the rest of it.
+          const onload = invoice_doc.__onload || {};
+          const prepaid = this.flt(
+            onload.posa_online_prepaid_amount,
+            this.currency_precision
+          );
+          const total = this.flt(
             invoice_doc.rounded_total || invoice_doc.grand_total,
             this.currency_precision
           );
+          const outstanding = this.flt(total - prepaid, this.currency_precision);
+          default_payment.amount = outstanding > 0 ? outstanding : 0;
         }
         if (invoice_doc.is_return) {
           this.is_return = true;
@@ -1648,7 +1786,9 @@ export default {
         this.invoice_doc.redeem_loyalty_points = value > 0 ? 1 : 0;
         this.invoice_doc.loyalty_points =
           this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
-        this.invoice_doc.payments.forEach(p => p.amount = 0);
+        this.invoice_doc.payments.forEach((p) => {
+          if (!this.is_online_payment(p)) p.amount = 0;
+        });
         this.payments_readonly = true;
         if (Array.isArray(this.invoice_doc.taxes)) {
           this.invoice_doc.taxes = [];
@@ -1666,6 +1806,9 @@ export default {
     is_credit_sale(value) {
       if (value == 1) {
         this.invoice_doc.payments.forEach((payment) => {
+          // Money the gateway already took is not credit, whatever the rest of
+          // this invoice becomes.
+          if (this.is_online_payment(payment)) return;
           payment.amount = 0;
           payment.base_amount = 0;
         });

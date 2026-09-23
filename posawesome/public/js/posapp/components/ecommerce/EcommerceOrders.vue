@@ -38,6 +38,7 @@
                 dense
                 clearable
                 @keyup.enter="get_orders"
+                @click:clear="clear_search"
               ></v-text-field>
               <v-btn text color="primary" class="ml-2" @click="get_orders">
                 <v-icon small class="mr-1">mdi-refresh</v-icon>
@@ -330,6 +331,13 @@ export default {
       });
     },
 
+    clear_search() {
+      // v-model goes to null on clear without firing the enter handler, which
+      // left the list showing the results of a search box that looked empty.
+      this.search = "";
+      this.get_orders();
+    },
+
     on_new_ecommerce_order() {
       this.get_orders();
     },
@@ -362,6 +370,15 @@ export default {
       // every other component's listener for the same event.
       evntBus.$on("new_ecommerce_order", this.on_new_ecommerce_order);
     });
+  },
+
+  // Pages are kept alive, so mounted runs once. Coming back to this page has
+  // to re-read the list: orders are billed and new ones arrive while it sits
+  // in the background.
+  activated() {
+    if (this.pos_profile.name) {
+      this.get_orders();
+    }
   },
 
   beforeDestroy() {

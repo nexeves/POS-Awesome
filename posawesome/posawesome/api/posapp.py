@@ -32,6 +32,7 @@ from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
 )
 from frappe.utils.caching import redis_cache
 from twilio.rest import Client
+from posawesome.posawesome.api import ecommerce_orders
 
 
 @frappe.whitelist()
@@ -646,6 +647,12 @@ def submit_invoice(invoice, data):
                 invoice_doc.append("advances", advance_payment)
                 invoice_doc.is_pos = 0
                 is_payment_entry = 1
+
+    # Money already taken by the gateway is recorded exactly once, whatever the
+    # payment screen sent up. This is the last point at which that can still be
+    # guaranteed, and it is a no-op for anything that did not come from a
+    # prepaid online order.
+    ecommerce_orders.enforce_online_prepayment(invoice_doc)
 
     payments = invoice_doc.payments
 
