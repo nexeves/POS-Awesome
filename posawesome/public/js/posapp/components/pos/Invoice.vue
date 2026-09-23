@@ -932,6 +932,19 @@ export default {
   },
 
   computed: {
+    // The ecommerce order this cart is billing, if any. Stock held for it is
+    // added back when asking the server for availability — those units are
+    // exactly the ones being handed over, so counting them as unavailable
+    // would show the cashier 0 for the item they are ringing up.
+    //
+    // Two shapes to cover: straight off the Ecommerce Orders page the cart
+    // still holds the order document itself, and after
+    // get_invoice_from_order_doc it holds the Sales Invoice drafted from it.
+    ecommerce_order_name() {
+      const doc = this.invoice_doc || {};
+      if (doc.doctype === "Ecommerce Sales Order") return doc.name;
+      return doc.custom_ecommerce_sales_order || null;
+    },
     total_qty() {
       this.close_payments();
       let qty = 0;
@@ -1831,6 +1844,7 @@ export default {
         args: {
           pos_profile: vm.pos_profile,
           items_data: items,
+          exclude_ecommerce_order: vm.ecommerce_order_name,
         },
         callback: function (r) {
           if (r.message) {
@@ -1861,6 +1875,7 @@ export default {
           warehouse: this.pos_profile.warehouse,
           doc: this.get_invoice_doc(),
           price_list: this.pos_profile.price_list,
+          exclude_ecommerce_order: this.ecommerce_order_name,
           item: {
             item_code: item.item_code,
             customer: this.customer,
@@ -3146,6 +3161,11 @@ export default {
     document.removeEventListener("keydown", this.shortSelectDiscount);
   },
   watch: {
+    // Keep the item grid in step: it queries availability independently and
+    // has no access to the cart's document.
+    ecommerce_order_name(value) {
+      evntBus.$emit("set_ecommerce_order", value);
+    },
     customer() {
       this.close_payments();
       evntBus.$emit("set_customer", this.customer);
