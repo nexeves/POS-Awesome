@@ -52,6 +52,29 @@
         </v-col>
       </v-row>
 
+      <!--
+        An order paid by card in the app is a hand-over, not a sale to ring up.
+        This has to be on the cart, not only on the payment screen: by the time
+        the payment screen could say it the cashier has already asked for money.
+      -->
+      <v-row
+        v-if="online_prepaid_amount > 0"
+        align="center"
+        class="items px-2 pt-0 pb-1"
+      >
+        <v-col cols="12" class="py-0">
+          <v-alert dense text type="success" class="mb-0 py-1 text-caption">
+            {{
+              __("Already paid online: {0}{1}", [
+                currencySymbol(pos_profile.currency),
+                formtCurrency(online_prepaid_amount),
+              ])
+            }}
+            <span v-if="online_card_label"> — {{ online_card_label }}</span>
+          </v-alert>
+        </v-col>
+      </v-row>
+
       <v-row
         align="center"
         class="items px-2 py-1 mt-0 pt-0"
@@ -911,6 +934,10 @@ export default {
       selcted_delivery_charges: {},
       invoice_posting_date: false,
       posting_date: frappe.datetime.nowdate(),
+      // True while PAY is drafting the invoice on the server. Two clicks
+      // before the first answer came back used to draft two invoices against
+      // the same order and leave one of them orphaned.
+      paying: false,
       items_headers: [
         {
           text: __("Name"),
@@ -932,6 +959,46 @@ export default {
   },
 
   computed: {
+    // The ecommerce order this cart is billing, if any. Stock held for it is
+    // added back when asking the server for availability — those units are
+    // exactly the ones being handed over, so counting them as unavailable
+    // would show the cashier 0 for the item they are ringing up.
+    //
+    // Two shapes to cover: straight off the Ecommerce Orders page the cart
+    // still holds the order document itself, and after
+    // get_invoice_from_order_doc it holds the Sales Invoice drafted from it.
+    ecommerce_order_name() {
+      const doc = this.invoice_doc || {};
+      if (doc.doctype === "Ecommerce Sales Order") return doc.name;
+      return doc.custom_ecommerce_sales_order || null;
+    },
+
+    // Same two shapes, asked as a yes/no.
+    from_ecommerce_order() {
+      return !!this.ecommerce_order_name;
+    },
+
+    // What the customer already paid by card at checkout. Read from the order
+    // before PAY is pressed and from the drafted invoice's onload afterwards,
+    // so the cart can say it in both states — by the time the payment screen
+    // says it, the cashier has already started collecting.
+    online_prepaid_amount() {
+      const doc = this.invoice_doc || {};
+      const onload = doc.__onload || {};
+      return flt(onload.posa_online_prepaid_amount || doc.online_paid_amount);
+    },
+
+    online_card_label() {
+      const doc = this.invoice_doc || {};
+      const onload = doc.__onload || {};
+      return (
+        onload.posa_online_masked_card ||
+        onload.posa_online_card_name ||
+        doc.online_masked_card ||
+        doc.online_card_name ||
+        ""
+      );
+    },
     total_qty() {
       this.close_payments();
       let qty = 0;
@@ -1311,7 +1378,40 @@ export default {
     load_pending_ecommerce_order() {
       const order = posStore.pending_ecommerce_order;
       if (!order) return;
+      // new_order needs the profile, which arrives asynchronously. Leave the
+      // order parked rather than dropping it — register_pos_profile calls back
+      // here the moment it lands.
+      if (!this.pos_profile || !this.pos_profile.name) return;
+
+      // The cart survives a trip to the Online Orders list now, so it can
+      // still hold a sale in progress. A return is the one thing that cannot
+      // simply be parked, so refuse rather than lose it.
+      if (this.items.length && this.invoiceType === "Return") {
+        evntBus.$emit("show_mesage", {
+          text: __("Finish the open return before loading an online order"),
+          color: "error",
+        });
+        return;
+      }
+
       posStore.pending_ecommerce_order = null;
+
+      let held = false;
+      if (this.items.length) {
+        if (this.invoice_doc.doctype === "Ecommerce Sales Order") {
+          // Nothing worth keeping: that order is still on the Online Orders
+          // page and no invoice was drafted for it. Holding it would try to
+          // save a Sales Invoice under the order's own name and fail.
+          this.items = [];
+          this.invoice_doc = "";
+        } else {
+          // Exactly what Save/New does — the sale in progress goes to Held
+          // rather than being thrown away to make room for the order.
+          this.new_invoice();
+          held = true;
+        }
+      }
+
       this.new_order(order);
       // The order is being billed now, so the cart is an Invoice regardless of
       // the profile's default type. This also re-enables the stock check in
@@ -1319,7 +1419,11 @@ export default {
       this.invoiceType = "Invoice";
       this.invoiceTypes = ["Invoice"];
       evntBus.$emit("show_mesage", {
-        text: __("Online order {0} loaded", [order.name]),
+        text: held
+          ? __("Online order {0} loaded — the sale in progress was held", [
+              order.name,
+            ])
+          : __("Online order {0} loaded", [order.name]),
         color: "success",
       });
     },
@@ -1391,6 +1495,19 @@ export default {
       } else {
         doc = this.invoice_doc;
       }
+
+      // A server call that threw never ran its callback, so `doc` is still the
+      // empty placeholder. Stop here with something the cashier can read,
+      // rather than walking off the end of an undefined item list and leaving
+      // only a console error behind the payment screen.
+      if (!doc.name || !doc.items) {
+        evntBus.$emit("show_mesage", {
+          text: __("Could not prepare an invoice for this order"),
+          color: "error",
+        });
+        return null;
+      }
+
       const Items = [];
       const updatedItemsData = this.get_invoice_items();
       doc.items.forEach((item) => {
@@ -1430,9 +1547,19 @@ export default {
         }
       });
       doc.items = newItems;
-      doc.update_stock = 1;
       doc.is_pos = 1;
-      doc.payments = this.get_payments();
+      if (this.from_ecommerce_order) {
+        // Leave `payments` and `update_stock` exactly as the server drafted
+        // them. Rebuilding payments from the POS profile — which is what the
+        // plain Sales Order path below does — drops the row holding the money
+        // the gateway already took, and the cashier is then handed an unpaid
+        // invoice for an order the customer has already paid for. `update_stock`
+        // is the server's call too: an order a Delivery Note already shipped
+        // must not deduct the same units a second time.
+      } else {
+        doc.update_stock = 1;
+        doc.payments = this.get_payments();
+      }
       return doc;
     },
 
@@ -1526,6 +1653,28 @@ export default {
       return this.invoice_doc;
     },
 
+    // Same shape as update_invoice_from_order, but the endpoint re-applies
+    // what was paid online against the total the cart now comes to. The
+    // cashier may have changed a line since the invoice was drafted, and the
+    // prepaid amount is capped at what the invoice actually asks for.
+    update_invoice_from_ecommerce_order(doc) {
+      const vm = this;
+      frappe.call({
+        method:
+          "posawesome.posawesome.api.ecommerce_orders.update_invoice_from_ecommerce_order",
+        args: {
+          data: doc,
+        },
+        async: false,
+        callback: function (r) {
+          if (r.message) {
+            vm.invoice_doc = r.message;
+          }
+        },
+      });
+      return this.invoice_doc;
+    },
+
     update_invoice_from_order(doc) {
       const vm = this;
       frappe.call({
@@ -1553,14 +1702,15 @@ export default {
     },
 
     async process_invoice_from_order() {
+      // Read before the call: get_invoice_from_order_doc leaves the cart
+      // holding the Sales Invoice it drafted, so by the time the answer is
+      // back there is no Ecommerce Sales Order left to recognise.
+      const from_ecommerce = this.from_ecommerce_order;
       const doc = await this.get_invoice_from_order_doc();
-      var up_invoice;
-      if (doc.name) {
-        up_invoice = await this.update_invoice_from_order(doc);
-        return up_invoice;
-      } else {
-        return this.update_invoice_from_order(doc);
-      }
+      if (!doc) return null;
+      return from_ecommerce
+        ? this.update_invoice_from_ecommerce_order(doc)
+        : this.update_invoice_from_order(doc);
     },
 
     async show_payment() {
@@ -1581,16 +1731,49 @@ export default {
       if (!this.validate()) {
         return;
       }
+      // PAY drafts a Sales Invoice on the server. Two clicks before the first
+      // answer came back drafted it twice and left one orphaned against the
+      // order, so the second click is simply dropped.
+      if (this.paying) return;
+      this.paying = true;
+      try {
+        const invoice_doc = await this.build_payment_invoice();
+        // A build that failed has already told the cashier why. Opening the
+        // payment screen on top of that would bury the message behind a panel
+        // with nothing payable in it.
+        if (!invoice_doc || !invoice_doc.name) return;
+        evntBus.$emit("show_payment", "true");
+        evntBus.$emit("send_invoice_doc_payment", invoice_doc);
+      } finally {
+        this.paying = false;
+      }
+    },
+
+    // Which round-trip turns this cart into a payable Sales Invoice. Split out
+    // of show_payment so the payment screen is revealed once, after the doc is
+    // in hand — it used to be shown first, leaving the cashier looking at the
+    // previous sale's totals (or a blank panel they could press Submit on) for
+    // as long as the server took.
+    async build_payment_invoice() {
       if (
         this.invoice_doc.doctype == "Sales Order" ||
         this.invoice_doc.doctype == "Ecommerce Sales Order"
       ) {
-        evntBus.$emit("show_payment", "true");
-        const invoice_doc = await this.process_invoice_from_order();
-        evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-      } else if (this.invoice_doc.doctype == "Sales Invoice") {
-        const sales_invoice_item = this.invoice_doc.items[0];
-        var sales_invoice_item_doc = {};
+        return this.process_invoice_from_order();
+      }
+
+      if (this.invoice_doc.doctype == "Sales Invoice") {
+        // An invoice already drafted from an online order keeps going through
+        // the order path, so its links back to the order — and the row holding
+        // what the gateway already took — are rebuilt rather than dropped.
+        if (this.invoice_doc.custom_ecommerce_sales_order) {
+          return this.process_invoice_from_order();
+        }
+        const sales_invoice_item = (this.invoice_doc.items || [])[0];
+        if (!sales_invoice_item) {
+          return this.process_invoice();
+        }
+        let sales_invoice_item_doc = {};
         frappe.call({
           method:
             "posawesome.posawesome.api.posapp.get_sales_invoice_child_table",
@@ -1605,20 +1788,12 @@ export default {
             }
           },
         });
-        if (sales_invoice_item_doc.sales_order) {
-          evntBus.$emit("show_payment", "true");
-          const invoice_doc = await this.process_invoice_from_order();
-          evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-        } else {
-          evntBus.$emit("show_payment", "true");
-          const invoice_doc = this.process_invoice();
-          evntBus.$emit("send_invoice_doc_payment", invoice_doc);
-        }
-      } else {
-        evntBus.$emit("show_payment", "true");
-        const invoice_doc = this.process_invoice();
-        evntBus.$emit("send_invoice_doc_payment", invoice_doc);
+        return sales_invoice_item_doc.sales_order
+          ? this.process_invoice_from_order()
+          : this.process_invoice();
       }
+
+      return this.process_invoice();
     },
 
     validate() {
@@ -1831,6 +2006,7 @@ export default {
         args: {
           pos_profile: vm.pos_profile,
           items_data: items,
+          exclude_ecommerce_order: vm.ecommerce_order_name,
         },
         callback: function (r) {
           if (r.message) {
@@ -1861,6 +2037,7 @@ export default {
           warehouse: this.pos_profile.warehouse,
           doc: this.get_invoice_doc(),
           price_list: this.pos_profile.price_list,
+          exclude_ecommerce_order: this.ecommerce_order_name,
           item: {
             item_code: item.item_code,
             customer: this.customer,
@@ -3062,6 +3239,10 @@ export default {
         : "Invoice";
       this.load_pending_ecommerce_order();
     });
+    // Pages are kept alive, so this component mounts once and register_pos_profile
+    // only ever fires once with it. Every later order picked on the Online
+    // Orders page is claimed here instead, when the POS comes back on screen.
+    evntBus.$on("pos_page_activated", this.load_pending_ecommerce_order);
     evntBus.$on("add_item", (item) => {
       this.add_item(item);
     });
@@ -3132,6 +3313,7 @@ export default {
     evntBus.$off("update_invoice_offers");
     evntBus.$off("update_invoice_coupons");
     evntBus.$off("set_all_items");
+    evntBus.$off("pos_page_activated", this.load_pending_ecommerce_order);
   },
   created() {
     document.addEventListener("keydown", this.shortOpenPayment.bind(this));
@@ -3146,6 +3328,11 @@ export default {
     document.removeEventListener("keydown", this.shortSelectDiscount);
   },
   watch: {
+    // Keep the item grid in step: it queries availability independently and
+    // has no access to the cart's document.
+    ecommerce_order_name(value) {
+      evntBus.$emit("set_ecommerce_order", value);
+    },
     customer() {
       this.close_payments();
       evntBus.$emit("set_customer", this.customer);

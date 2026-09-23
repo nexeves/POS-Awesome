@@ -90,6 +90,13 @@
                       {{ formtFloat(item.actual_qty) || 0 }}
                       {{ item.stock_uom || "" }}
                     </div>
+                    <div
+                      v-if="item.reserved_qty > 0"
+                      class="text-caption grey--text"
+                      :title="reserved_hint(item)"
+                    >
+                      {{ reserved_hint(item) }}
+                    </div>
                   </v-card-text>
                 </v-card>
               </v-col>
@@ -117,6 +124,11 @@
                     <span class="golden--text">{{
                       formtFloat(item.actual_qty)
                     }}</span>
+                    <span
+                      v-if="item.reserved_qty > 0"
+                      class="text-caption grey--text ml-1"
+                      >({{ reserved_hint(item) }})</span
+                    >
                   </template>
                 </v-data-table>
               </template>
@@ -191,6 +203,9 @@ export default {
     customer: null,
     new_line: false,
     qty: 1,
+    // Set while the cart is billing an ecommerce order, so that order's own
+    // reserved units are not subtracted from what this grid shows.
+    ecommerce_order: null,
   }),
 
   watch: {
@@ -249,6 +264,7 @@ export default {
           item_group: gr,
           search_value: sr,
           customer: vm.customer,
+          exclude_ecommerce_order: vm.ecommerce_order,
         },
         callback: function (r) {
           if (r.message) {
@@ -437,6 +453,14 @@ export default {
       }
       return search_term;
     },
+    // Explains why the available number is lower than what is on the shelf.
+    // Without it a cashier looking at a full shelf and a count of 2 has no way
+    // to tell the difference between a reservation and a stock error.
+    reserved_hint(item) {
+      return __("{0} reserved for online orders", [
+        this.formtFloat(item.reserved_qty),
+      ]);
+    },
     esc_event() {
       this.search = null;
       this.first_search = null;
@@ -451,6 +475,7 @@ export default {
         args: {
           pos_profile: vm.pos_profile,
           items_data: items,
+          exclude_ecommerce_order: vm.ecommerce_order,
         },
         callback: function (r) {
           if (r.message) {
@@ -459,6 +484,7 @@ export default {
                 (element) => element.item_code == item.item_code
               );
               item.actual_qty = updated_item.actual_qty;
+              item.reserved_qty = updated_item.reserved_qty || 0;
               item.serial_no_data = updated_item.serial_no_data;
               item.batch_no_data = updated_item.batch_no_data;
               item.item_uoms = updated_item.item_uoms;
@@ -666,6 +692,14 @@ export default {
     });
     evntBus.$on("update_customer", (data) => {
       this.customer = data;
+    });
+    // Emitted by Invoice.vue whenever the cart starts or stops billing an
+    // ecommerce order. Refresh the grid so its own held units reappear as
+    // available (and disappear again once the cart is cleared).
+    evntBus.$on("set_ecommerce_order", (name) => {
+      if (this.ecommerce_order === (name || null)) return;
+      this.ecommerce_order = name || null;
+      this.get_items();
     });
   },
 

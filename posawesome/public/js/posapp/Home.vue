@@ -2,7 +2,17 @@
   <v-app class="container1">
     <v-main>
       <Navbar @changePage="setPage($event)"></Navbar>
-      <component v-bind:is="page" class="mx-4 md-4"></component>
+      <!--
+        Kept alive on purpose. Without this every page switch destroyed the POS
+        and rebuilt it: a half-rung sale was silently thrown away just for
+        glancing at the Online Orders list, and each rebuild registered another
+        set of event-bus listeners while the teardown of the old ones removed
+        other components' listeners along with its own (evntBus.$off(event)
+        with no handler removes every handler for that event, not just yours).
+      -->
+      <keep-alive>
+        <component v-bind:is="page" class="mx-4 md-4"></component>
+      </keep-alive>
     </v-main>
   </v-app>
 </template>

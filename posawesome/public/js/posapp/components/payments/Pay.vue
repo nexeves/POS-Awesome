@@ -789,6 +789,15 @@ export default {
       });
     });
   },
+  // Pages are kept alive, so mounted runs once. Invoices are settled and
+  // raised while this page sits in the background, so coming back to it has to
+  // re-read the list rather than show what was true the first time it opened.
+  activated() {
+    if (this.pos_profile && this.pos_profile.name && this.customer_name) {
+      this.get_outstanding_invoices();
+    }
+  },
+
   beforeDestroy() {
     evntBus.$off("update_customer");
     evntBus.$off("fetch_customer_details");

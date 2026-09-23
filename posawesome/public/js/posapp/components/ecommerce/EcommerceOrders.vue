@@ -38,6 +38,7 @@
                 dense
                 clearable
                 @keyup.enter="get_orders"
+                @click:clear="clear_search"
               ></v-text-field>
               <v-btn text color="primary" class="ml-2" @click="get_orders">
                 <v-icon small class="mr-1">mdi-refresh</v-icon>
@@ -64,6 +65,26 @@
             <template v-slot:item.grand_total="{ item }">
               {{ currencySymbol(item.currency) }}
               {{ formtCurrency(item.grand_total) }}
+              <!--
+                The cashier has to see this before they open anything: an order
+                paid by card in the app is a hand-over, not a sale to ring up.
+                Collecting again would charge the customer twice.
+              -->
+              <v-chip
+                v-if="item.online_paid"
+                x-small
+                label
+                dark
+                color="teal"
+                class="ml-2"
+                :title="
+                  __('Already paid online') +
+                  (item.online_card_name ? ' — ' + item.online_card_name : '')
+                "
+              >
+                <v-icon x-small class="mr-1">mdi-credit-card-check-outline</v-icon>
+                {{ __("PAID ONLINE") }}
+              </v-chip>
             </template>
 
             <template v-slot:item.ecommerce_status="{ item }">
@@ -111,7 +132,7 @@
                 @click="load_to_pos(item)"
               >
                 <v-icon small class="mr-1">mdi-cart-arrow-down</v-icon>
-                {{ __("Load to POS") }}
+                {{ item.online_paid ? __("Hand Over") : __("Load to POS") }}
               </v-btn>
               <v-icon v-else color="success">mdi-check-circle</v-icon>
             </template>
@@ -310,6 +331,13 @@ export default {
       });
     },
 
+    clear_search() {
+      // v-model goes to null on clear without firing the enter handler, which
+      // left the list showing the results of a search box that looked empty.
+      this.search = "";
+      this.get_orders();
+    },
+
     on_new_ecommerce_order() {
       this.get_orders();
     },
@@ -342,6 +370,15 @@ export default {
       // every other component's listener for the same event.
       evntBus.$on("new_ecommerce_order", this.on_new_ecommerce_order);
     });
+  },
+
+  // Pages are kept alive, so mounted runs once. Coming back to this page has
+  // to re-read the list: orders are billed and new ones arrive while it sits
+  // in the background.
+  activated() {
+    if (this.pos_profile.name) {
+      this.get_orders();
+    }
   },
 
   beforeDestroy() {

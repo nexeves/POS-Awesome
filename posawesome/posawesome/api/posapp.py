@@ -32,6 +32,7 @@ from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
 )
 from frappe.utils.caching import redis_cache
 from twilio.rest import Client
+from posawesome.posawesome.api import ecommerce_orders
 
 
 @frappe.whitelist()
@@ -129,7 +130,8 @@ def update_opening_shift_data(data, pos_profile):
 
 @frappe.whitelist()
 def get_items(
-    pos_profile, price_list=None, item_group="", search_value="", customer=None
+    pos_profile, price_list=None, item_group="", search_value="", customer=None,
+    exclude_ecommerce_order=None,
 ):
     _pos_profile = json.loads(pos_profile)
     ttl = _pos_profile.get("posa_server_cache_duration")
@@ -294,7 +296,10 @@ def get_items(
                     )
                 item_stock_qty = 0
                 if pos_profile.get("posa_display_items_in_stock") or use_limit_search:
-                    item_stock_qty = get_stock_availability(
+                    # Physical only; this result is cached. Ecommerce holds are
+                    # netted off after the cache boundary at the bottom of
+                    # get_items, which also re-applies the in-stock filter.
+                    item_stock_qty = get_physical_qty(
                         item_code, pos_profile.get("warehouse")
                     )
                 attributes = ""
@@ -331,9 +336,32 @@ def get_items(
         return result
 
     if _pos_profile.get("posa_use_server_cache"):
-        return __get_items(pos_profile, price_list, item_group, search_value, customer)
+        rows = __get_items(pos_profile, price_list, item_group, search_value, customer)
+        # redis_cache returns the same list on every hit, so copy before
+        # netting reservations off — otherwise the second call would subtract
+        # the same hold from the first call's already-reduced number.
+        rows = [dict(row) for row in rows]
     else:
-        return _get_items(pos_profile, price_list, item_group, search_value, customer)
+        rows = _get_items(pos_profile, price_list, item_group, search_value, customer)
+
+    # _get_items only bothers to look up stock when the profile asks for it;
+    # otherwise every row's actual_qty is a placeholder 0. Netting holds off
+    # that placeholder would invent negative stock, so leave those rows alone.
+    if _pos_profile.get("posa_display_items_in_stock") or _pos_profile.get(
+        "pose_use_limit_search"
+    ):
+        rows = apply_ecommerce_reservations(
+            rows, _pos_profile.get("warehouse"), exclude_ecommerce_order
+        )
+
+        # An item whose whole shelf is spoken for is not sellable here, so it
+        # drops out of the grid the same way a genuinely empty one does.
+        # Re-applied after the reservation pass because the filter inside
+        # _get_items only ever saw physical stock.
+        if _pos_profile.get("posa_display_items_in_stock"):
+            rows = [row for row in rows if flt(row.get("actual_qty")) > 0]
+
+    return rows
 
 
 def get_item_group_condition(pos_profile):
@@ -620,6 +648,12 @@ def submit_invoice(invoice, data):
                 invoice_doc.is_pos = 0
                 is_payment_entry = 1
 
+    # Money already taken by the gateway is recorded exactly once, whatever the
+    # payment screen sent up. This is the last point at which that can still be
+    # guaranteed, and it is a no-op for anything that did not come from a
+    # prepaid online order.
+    ecommerce_orders.enforce_online_prepayment(invoice_doc)
+
     payments = invoice_doc.payments
 
     if frappe.get_value("POS Profile", invoice_doc.pos_profile, "posa_auto_set_batch"):
@@ -893,7 +927,7 @@ def delete_invoice(invoice):
 
 
 @frappe.whitelist()
-def get_items_details(pos_profile, items_data):
+def get_items_details(pos_profile, items_data, exclude_ecommerce_order=None):
     _pos_profile = json.loads(pos_profile)
     ttl = _pos_profile.get("posa_server_cache_duration")
     if ttl:
@@ -913,7 +947,10 @@ def get_items_details(pos_profile, items_data):
         if len(items_data) > 0:
             for item in items_data:
                 item_code = item.get("item_code")
-                item_stock_qty = get_stock_availability(item_code, warehouse)
+                # Physical only — this result may be cached for up to 30
+                # minutes. Reservations are applied after the cache boundary
+                # below, since they change with every app order.
+                item_stock_qty = get_physical_qty(item_code, warehouse)
                 has_batch_no, has_serial_no = frappe.get_value(
                     "Item", item_code, ["has_batch_no", "has_serial_no"]
                 )
@@ -974,13 +1011,22 @@ def get_items_details(pos_profile, items_data):
         return result
 
     if _pos_profile.get("posa_use_server_cache"):
-        return __get_items_details(pos_profile, items_data)
+        rows = __get_items_details(pos_profile, items_data)
+        # The cache hands back the same list object on every hit, so copy the
+        # rows before netting them down — otherwise each call would subtract
+        # the hold again from the previous call's result.
+        rows = [dict(row) for row in rows]
     else:
-        return _get_items_details(pos_profile, items_data)
+        rows = _get_items_details(pos_profile, items_data)
+
+    return apply_ecommerce_reservations(
+        rows, _pos_profile.get("warehouse"), exclude_ecommerce_order
+    )
 
 
 @frappe.whitelist()
-def get_item_detail(item, doc=None, warehouse=None, price_list=None):
+def get_item_detail(item, doc=None, warehouse=None, price_list=None,
+                    exclude_ecommerce_order=None):
     item = json.loads(item)
     today = nowdate()
     item_code = item.get("item_code")
@@ -1014,14 +1060,43 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None):
         overwrite_warehouse=False,
     )
     if item.get("is_stock_item") and warehouse:
-        res["actual_qty"] = get_stock_availability(item_code, warehouse)
+        res["actual_qty"] = get_stock_availability(
+            item_code, warehouse, exclude_ecommerce_order
+        )
+        res["reserved_qty"] = get_ecommerce_reserved_qty(
+            item_code, warehouse, exclude_ecommerce_order
+        )
     res["max_discount"] = max_discount
     res["batch_no_data"] = batch_no_data
     return res
 
 
-def get_stock_availability(item_code, warehouse):
-    actual_qty = (
+def get_stock_availability(item_code, warehouse, exclude_ecommerce_order=None):
+    """What this terminal may actually sell, physical stock minus online holds.
+
+    Every stock number on the POS screen comes through here, so subtracting
+    reservations once covers the item grid, the item detail popup and the
+    client-side over-sell check in Invoice.vue that reads `actual_qty`.
+
+    `exclude_ecommerce_order` gives back the holds belonging to one order —
+    passed when a cashier has pulled an ecommerce order into the cart, so the
+    units it is about to hand over are not counted against it.
+
+    Note this is *not* the last word: the browser check is bypassable, so the
+    binding guard is `validate_ecommerce_reserved_stock` on Sales Invoice in
+    the alrasam app.
+    """
+    return get_physical_qty(item_code, warehouse) - get_ecommerce_reserved_qty(
+        item_code, warehouse, exclude_ecommerce_order
+    )
+
+
+def get_physical_qty(item_code, warehouse):
+    """Raw stock on the shelf, ignoring any hold. Split out from
+    `get_stock_availability` so the redis-cached `get_items_details` can cache
+    this half — which only changes when stock moves — while reservations, which
+    change every time an app order is placed, are applied fresh afterwards."""
+    return (
         frappe.db.get_value(
             "Stock Ledger Entry",
             filters={
@@ -1034,7 +1109,56 @@ def get_stock_availability(item_code, warehouse):
         )
         or 0.0
     )
-    return actual_qty
+
+
+def apply_ecommerce_reservations(rows, warehouse, exclude_ecommerce_order=None):
+    """Net each row's `actual_qty` down by its hold, and tag on `reserved_qty`
+    so the POS can explain the smaller number to the cashier.
+
+    Applied to lists that may have come from a cache, so it must be safe to
+    run on rows whose `actual_qty` is already physical-only — never call it
+    on rows produced by `get_stock_availability`.
+    """
+    if not rows or not warehouse:
+        return rows
+
+    try:
+        from alrasam.alrasam_erp import stock_reservation
+    except ImportError:
+        return rows
+
+    reserved_map = stock_reservation.get_reserved_qty_map(
+        warehouse, exclude_order=exclude_ecommerce_order
+    )
+    if not reserved_map:
+        return rows
+
+    for row in rows:
+        reserved = flt(reserved_map.get(row.get("item_code")))
+        if not reserved:
+            continue
+        row["reserved_qty"] = reserved
+        row["actual_qty"] = flt(row.get("actual_qty")) - reserved
+
+    return rows
+
+
+def get_ecommerce_reserved_qty(item_code, warehouse, exclude_ecommerce_order=None):
+    """Qty held for unfulfilled ecommerce orders at this warehouse.
+
+    `alrasam` is an optional peer of this app — same convention as
+    `_ecommerce_installed()` in api/ecommerce_orders.py — so this imports
+    lazily and reports nothing at all when the app is absent. The POS then
+    behaves exactly as it did before reservations existed.
+    """
+    try:
+        from alrasam.alrasam_erp import stock_reservation
+    except ImportError:
+        return 0.0
+
+    return stock_reservation.get_reserved_qty(
+        item_code, warehouse, exclude_order=exclude_ecommerce_order
+    )
 
 
 @frappe.whitelist()
