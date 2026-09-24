@@ -488,6 +488,17 @@ def _apply_online_prepayment(invoice, order_name):
     else:
         invoice.append("payments", {"mode_of_payment": mode, "amount": applied, "default": 0})
 
+    # Nothing left to collect means nothing else may be recorded as collected.
+    # The payment screen locks its fields in this state, but the browser cannot
+    # be what guarantees it: a cashier who got an amount into another row would
+    # otherwise take the money a second time and hand back change to balance
+    # the invoice. Rows are zeroed rather than refused so an honest mis-tap
+    # still submits, just without the second payment.
+    if applied >= _payable_total(invoice):
+        for row in invoice.payments:
+            if row.mode_of_payment != mode:
+                row.amount = 0
+
     invoice.custom_ecommerce_payment = prepaid["name"]
 
     # Read by Payments.vue, which locks that row and works the rest of the
