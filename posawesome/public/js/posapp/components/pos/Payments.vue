@@ -1075,6 +1075,7 @@ export default {
           .call("posawesome.posawesome.api.posapp.get_available_credit", {
             customer: this.invoice_doc.customer,
             company: this.pos_profile.company,
+            account: this.invoice_doc.debit_to,
           })
           .then((r) => {
             const data = r.message;

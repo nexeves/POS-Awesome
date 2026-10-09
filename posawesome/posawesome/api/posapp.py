@@ -12,7 +12,10 @@ from erpnext.stock.get_item_details import get_item_details
 from erpnext.accounts.doctype.pos_profile.pos_profile import get_item_groups
 from frappe.utils.background_jobs import enqueue
 from erpnext.accounts.party import get_party_bank_account
-from erpnext.accounts.utils import get_balance_on
+from erpnext.accounts.utils import get_balance_on, update_voucher_outstanding
+from erpnext.accounts.doctype.payment_entry.payment_entry import (
+    get_outstanding_on_journal_entry,
+)
 from erpnext.stock.doctype.batch.batch import (
     get_batch_no,
     get_batch_qty,
@@ -707,8 +710,8 @@ def submit_invoice(invoice, data):
 
     is_payment_entry = 0
     if data.get("redeemed_customer_credit"):
-        for row in data.get("customer_credit_dict"):
-            if row["type"] == "Advance" and row["credit_to_redeem"]:
+        for row in data.get("customer_credit_dict") or []:
+            if row["type"] == "Advance" and row.get("credit_to_redeem"):
                 advance = frappe.get_doc("Payment Entry", row["credit_origin"])
 
                 advance_payment = {
@@ -722,6 +725,18 @@ def submit_invoice(invoice, data):
                 invoice_doc.append("advances", advance_payment)
                 invoice_doc.is_pos = 0
                 is_payment_entry = 1
+
+        invoice_total = flt(invoice_doc.rounded_total or invoice_doc.grand_total)
+        credit = flt(data.get("redeemed_customer_credit"))
+        if credit and invoice_total - credit <= 0:
+            invoice_doc.is_pos = 0
+            for payment in invoice_doc.payments or []:
+                payment.amount = 0
+                payment.base_amount = 0
+            invoice_doc.paid_amount = 0
+            invoice_doc.base_paid_amount = 0
+            invoice_doc.change_amount = 0
+            invoice_doc.base_change_amount = 0
 
     payments = invoice_doc.payments
 
@@ -751,30 +766,21 @@ def submit_invoice(invoice, data):
         "POS Profile",
         invoice_doc.pos_profile,
         "posa_allow_submissions_in_background_job",
-    ):
-        invoices_list = frappe.get_all(
-            "Sales Invoice",
-            filters={
-                "posa_pos_opening_shift": invoice_doc.posa_pos_opening_shift,
-                "docstatus": 0,
-                "posa_is_printed": 1,
+    ) and not data.get("redeemed_customer_credit"):
+        enqueue(
+            method=submit_in_background_job,
+            queue="short",
+            timeout=1000,
+            is_async=True,
+            kwargs={
+                "invoice": invoice_doc.name,
+                "data": data,
+                "is_payment_entry": is_payment_entry,
+                "total_cash": total_cash,
+                "cash_account": cash_account,
+                "payments": payments,
             },
         )
-        for invoice in invoices_list:
-            enqueue(
-                method=submit_in_background_job,
-                queue="short",
-                timeout=1000,
-                is_async=True,
-                kwargs={
-                    "invoice": invoice.name,
-                    "data": data,
-                    "is_payment_entry": is_payment_entry,
-                    "total_cash": total_cash,
-                    "cash_account": cash_account,
-                    "payments": payments,
-                },
-            )
     else:
 
         total_paid_amount = sum(
@@ -794,6 +800,7 @@ def submit_invoice(invoice, data):
         # )       
 
         invoice_doc.submit()
+        invoice_doc.reload()
 
         redeeming_customer_credit(
             invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
@@ -823,11 +830,25 @@ def set_batch_nos_for_bundels(doc, warehouse_field, throw=False):
                     )
 
 
+def _sync_sales_invoice_outstanding(invoice_doc):
+    update_voucher_outstanding(
+        "Sales Invoice",
+        invoice_doc.name,
+        invoice_doc.debit_to,
+        "Customer",
+        invoice_doc.customer,
+    )
+
+
 def redeeming_customer_credit(
     invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
 ):
     # redeeming customer credit with journal voucher
+    if invoice_doc.get("is_return"):
+        return
     today = nowdate()
+    if invoice_doc.name:
+        invoice_doc.reload()
     if data.get("redeemed_customer_credit"):
         cost_center = frappe.get_value(
             "POS Profile", invoice_doc.pos_profile, "cost_center"
@@ -886,6 +907,96 @@ def redeeming_customer_credit(
                 jv_doc.set_missing_values()
                 jv_doc.save()
                 jv_doc.submit()
+                _sync_sales_invoice_outstanding(invoice_doc)
+            elif row["type"] == "Journal Entry" and row["credit_to_redeem"]:
+                already_allocated = frappe.db.sql(
+                    """
+                    SELECT a.parent
+                    FROM `tabJournal Entry Account` a
+                    INNER JOIN `tabJournal Entry Account` b ON a.parent = b.parent
+                    WHERE a.docstatus = 1
+                        AND a.reference_type = 'Journal Entry'
+                        AND a.reference_name = %s
+                        AND b.reference_type = 'Sales Invoice'
+                        AND b.reference_name = %s
+                    LIMIT 1
+                    """,
+                    (row["credit_origin"], invoice_doc.name),
+                )
+                if already_allocated:
+                    continue
+
+                outstanding = flt(
+                    frappe.db.get_value(
+                        "Sales Invoice", invoice_doc.name, "outstanding_amount"
+                    )
+                )
+                amount = min(flt(row["credit_to_redeem"]), max(outstanding, 0))
+                if amount <= 0:
+                    continue
+
+                je_account = (
+                    frappe.db.get_value(
+                        "Journal Entry Account",
+                        {
+                            "parent": row["credit_origin"],
+                            "party_type": "Customer",
+                            "party": invoice_doc.customer,
+                            "docstatus": 1,
+                        },
+                        "account",
+                    )
+                    or invoice_doc.debit_to
+                )
+
+                jv_doc = frappe.get_doc(
+                    {
+                        "doctype": "Journal Entry",
+                        "voucher_type": "Journal Entry",
+                        "posting_date": today,
+                        "company": invoice_doc.company,
+                        "cost_center": cost_center,
+                    }
+                )
+                jv_doc.append(
+                    "accounts",
+                    {
+                        "account": je_account,
+                        "party_type": "Customer",
+                        "party": invoice_doc.customer,
+                        "reference_type": "Journal Entry",
+                        "reference_name": row["credit_origin"],
+                        "debit_in_account_currency": amount,
+                        "debit": amount,
+                        "exchange_rate": 1,
+                        "cost_center": cost_center,
+                    },
+                )
+                jv_doc.append(
+                    "accounts",
+                    {
+                        "account": invoice_doc.debit_to,
+                        "party_type": "Customer",
+                        "party": invoice_doc.customer,
+                        "reference_type": "Sales Invoice",
+                        "reference_name": invoice_doc.name,
+                        "credit_in_account_currency": amount,
+                        "credit": amount,
+                        "exchange_rate": 1,
+                        "cost_center": cost_center,
+                    },
+                )
+                jv_doc.flags.ignore_permissions = True
+                jv_doc.flags.ignore_validate = True
+                frappe.flags.ignore_account_permission = True
+                jv_doc.set_missing_values()
+                jv_doc.set_amounts_in_company_currency()
+                jv_doc.set_total_debit_credit()
+                jv_doc.set_against_account()
+                jv_doc.save()
+                jv_doc.flags.ignore_validate = True
+                jv_doc.submit()
+                _sync_sales_invoice_outstanding(invoice_doc)
 
     if is_payment_entry and total_cash > 0:
         for payment in payments:
@@ -924,8 +1035,9 @@ def redeeming_customer_credit(
 
 
 def submit_in_background_job(kwargs):
+    if kwargs.get("kwargs") and not kwargs.get("invoice"):
+        kwargs = kwargs.get("kwargs")
     invoice = kwargs.get("invoice")
-    invoice_doc = kwargs.get("invoice_doc")
     data = kwargs.get("data")
     is_payment_entry = kwargs.get("is_payment_entry")
     total_cash = kwargs.get("total_cash")
@@ -933,7 +1045,9 @@ def submit_in_background_job(kwargs):
     payments = kwargs.get("payments")
 
     invoice_doc = frappe.get_doc("Sales Invoice", invoice)
-    invoice_doc.submit()
+    if invoice_doc.docstatus == 0:
+        invoice_doc.submit()
+    invoice_doc.reload()
     redeeming_customer_credit(
         invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
     )
@@ -959,6 +1073,7 @@ def get_available_credit(customer, company):
         outstanding_amount = -(row.outstanding_amount)
         row = {
             "type": "Invoice",
+            "credit_origin_doctype": "Sales Invoice",
             "credit_origin": row.name,
             "total_credit": outstanding_amount,
             "credit_to_redeem": 0,
@@ -981,12 +1096,50 @@ def get_available_credit(customer, company):
     for row in advances:
         row = {
             "type": "Advance",
+            "credit_origin_doctype": "Payment Entry",
             "credit_origin": row.name,
             "total_credit": row.unallocated_amount,
             "credit_to_redeem": 0,
         }
 
         total_credit.append(row)
+
+    journal_credits = frappe.db.sql(
+        """
+        SELECT
+            je.name as credit_origin,
+            SUM(jea.credit_in_account_currency) as total_credit
+        FROM `tabJournal Entry` je
+        INNER JOIN `tabJournal Entry Account` jea ON jea.parent = je.name
+        WHERE je.docstatus = 1
+            AND je.company = %s
+            AND jea.party_type = 'Customer'
+            AND jea.party = %s
+            AND jea.credit_in_account_currency > 0
+            AND IFNULL(jea.reference_type, '') IN ('', 'Sales Order')
+        GROUP BY je.name
+        HAVING SUM(jea.credit_in_account_currency) > 0
+        """,
+        (company, customer),
+        as_dict=True,
+    )
+
+    for row in journal_credits:
+        outstanding, _ = get_outstanding_on_journal_entry(
+            row.credit_origin, "Customer", customer
+        )
+        available = min(flt(row.total_credit), max(-flt(outstanding), 0))
+        if available <= 0:
+            continue
+        total_credit.append(
+            {
+                "type": "Journal Entry",
+                "credit_origin_doctype": "Journal Entry",
+                "credit_origin": row.credit_origin,
+                "total_credit": available,
+                "credit_to_redeem": 0,
+            }
+        )
 
     return total_credit
 
