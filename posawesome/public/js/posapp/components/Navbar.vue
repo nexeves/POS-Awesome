@@ -208,7 +208,16 @@ export default {
       }
     },
     open_ecommerce_orders() {
+      this.sync_item('EcommerceOrders');
       this.$emit('changePage', 'EcommerceOrders');
+    },
+    // Keeps the drawer's highlight on the page actually showing when the
+    // switch came from somewhere other than the drawer (the bell, or a page's
+    // own Back button). `item` also decides whether Close Shift is offered,
+    // so a stale one hid it on the POS page.
+    sync_item(page) {
+      const index = this.items.findIndex((entry) => entry.text === page);
+      if (index !== -1) this.item = index;
     },
     fetch_ecommerce_count() {
       if (!this.show_ecommerce_bell || !this.pos_profile.name) return;
@@ -438,10 +447,12 @@ export default {
       evntBus.$on('ecommerce_orders_seen', () => {
         this.fetch_ecommerce_count();
       });
+      evntBus.$on('change_page', this.sync_item);
       this.subscribe_ecommerce_realtime();
     });
   },
   beforeDestroy() {
+    evntBus.$off('change_page', this.sync_item);
     if (this.ecommerce_subscribed) {
       frappe.realtime.off(
         'ecommerce_order_created',
