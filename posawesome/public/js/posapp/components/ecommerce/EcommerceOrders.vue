@@ -7,7 +7,19 @@
           style="max-height: 94vh; height: 94vh"
         >
           <v-row align="center" class="px-2 pt-2">
-            <v-col md="4" cols="12">
+            <v-col md="4" cols="12" class="d-flex align-center">
+              <!-- The drawer can get back too, but it starts collapsed and
+                   the bell skips it, so testers never found the way out. -->
+              <v-btn
+                small
+                text
+                color="primary"
+                class="mr-2 px-1"
+                @click="back_to_pos"
+              >
+                <v-icon left>mdi-arrow-left</v-icon>
+                {{ __("POS") }}
+              </v-btn>
               <p class="mb-0">
                 <strong class="primary--text">{{ __("Online Orders") }}</strong>
                 <span v-if="pending_count" class="error--text ml-2">
@@ -329,6 +341,10 @@ export default {
           this.loading_order = null;
         },
       });
+    },
+
+    back_to_pos() {
+      evntBus.$emit("change_page", "POS");
     },
 
     clear_search() {
