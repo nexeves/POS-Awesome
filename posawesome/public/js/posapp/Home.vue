@@ -11,6 +11,7 @@
 import Navbar from './components/Navbar.vue';
 import POS from './components/pos/Pos.vue';
 import Payments from './components/payments/Pay.vue';
+import CustomerDisplay from './components/pos/CustomerDisplay.vue';
 
 export default {
   data: function () {
@@ -22,6 +23,7 @@ export default {
     Navbar,
     POS,
     Payments,
+    CustomerDisplay,
   },
   methods: {
     setPage(page) {
@@ -36,9 +38,16 @@ export default {
   },
   mounted() {
     this.remove_frappe_nav();
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('customer_display') === 'true') {
+      this.page = 'CustomerDisplay';
+    }
   },
   updated() {},
   created: function () {
+    if (!window.pos_channel_id) {
+      window.pos_channel_id = 'pos_channel_' + Math.random().toString(36).substring(2, 9);
+    }
     setTimeout(() => {
       this.remove_frappe_nav();
     }, 1000);

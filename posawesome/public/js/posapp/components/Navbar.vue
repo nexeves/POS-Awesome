@@ -304,6 +304,11 @@ export default {
         Show Customer Invoices
       </v-btn>
 
+      <v-btn color="primary" text @click="openCustomerDisplay">
+        <v-icon left>mdi-monitor</v-icon>
+        Customer Display
+      </v-btn>
+
       <div class="text-center">
         <v-menu offset-y>
           <template v-slot:activator="{ on, attrs }">
@@ -596,6 +601,11 @@ export default {
         `/printview?doctype=Sales%20Invoice&name=${this.last_invoice}&trigger_print=1&format=${format}&no_letterhead=${letter_head}`;
       const printWindow = window.open(url, 'Print');
       printWindow.addEventListener('load', () => printWindow.print(), true);
+    },
+    openCustomerDisplay() {
+      const channelId = window.pos_channel_id || 'default';
+      const url = frappe.urllib.get_base_url() + '/app/posapp?customer_display=true&channel_id=' + channelId;
+      window.open(url, 'CustomerDisplay', 'width=1024,height=768,menubar=no,toolbar=no,location=no,status=no');
     },
     openCustomerDialog() {
       this.customerDialog = true;

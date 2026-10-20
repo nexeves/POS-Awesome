@@ -31,6 +31,7 @@ from posawesome.posawesome.doctype.delivery_charges.delivery_charges import (
     get_applicable_delivery_charges as _get_applicable_delivery_charges,
 )
 from frappe.utils.caching import redis_cache
+from twilio.rest import Client
 
 
 @frappe.whitelist()
@@ -1835,3 +1836,71 @@ def get_sales_invoice_child_table(sales_invoice, sales_invoice_item):
         "Sales Invoice Item", {"parent": parent_doc.name, "name": sales_invoice_item}
     )
     return child_doc
+
+@frappe.whitelist()
+def send_loyalty_otp(customer):
+    if not customer:
+        frappe.throw(_("Customer is required"))
+
+    customer_doc = frappe.get_doc("Customer", customer)
+    mobile_no = customer_doc.mobile_no
+
+    if not mobile_no:
+        frappe.throw(_("Customer Mobile Number is required for OTP verification"))
+
+    mobile_no = mobile_no.replace(" ", "").replace("-", "")
+
+    if not mobile_no.startswith("+"):
+        mobile_no = "+968" + mobile_no
+
+    account_sid = frappe.conf.get("TWILIO_ACCOUNT_SID")
+    auth_token = frappe.conf.get("TWILIO_AUTH_TOKEN")
+    service_sid = frappe.conf.get("TWILIO_SERVICE_SID")
+
+    if not account_sid or not auth_token:
+        frappe.throw(_("Twilio Credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) are missing in site_config.json"))
+
+    try:
+        client = Client(account_sid, auth_token)
+        verification = client.verify.v2.services(service_sid).verifications.create(
+            to=mobile_no, channel="sms"
+        )
+        return {"status": verification.status}
+    except Exception as e:
+        frappe.log_error("Twilio OTP Error", str(e))
+        frappe.throw(_("Failed to send OTP: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def validate_loyalty_otp(customer, otp):
+    if not customer or not otp:
+        frappe.throw(_("Customer and OTP are required"))
+
+    customer_doc = frappe.get_doc("Customer", customer)
+    mobile_no = customer_doc.mobile_no
+    
+    mobile_no = mobile_no.replace(" ", "").replace("-", "")
+
+    if not mobile_no.startswith("+"):
+        mobile_no = "+968" + mobile_no
+
+    account_sid = frappe.conf.get("TWILIO_ACCOUNT_SID")
+    auth_token = frappe.conf.get("TWILIO_AUTH_TOKEN")
+    service_sid = frappe.conf.get("TWILIO_SERVICE_SID")
+
+    if not account_sid or not auth_token:
+        frappe.throw(_("Twilio Credentials are missing"))
+
+    try:
+        client = Client(account_sid, auth_token)
+        verification_check = client.verify.v2.services(service_sid).verification_checks.create(
+            to=mobile_no, code=otp
+        )
+
+        if verification_check.status == "approved":
+            return {"status": "approved"}
+        else:
+            return {"status": "failed", "message": _("Invalid OTP")}
+    except Exception as e:
+        frappe.log_error("Twilio OTP Log", str(e))
+        frappe.throw(_("Failed to validate OTP: {0}").format(str(e)))

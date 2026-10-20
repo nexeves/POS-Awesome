@@ -2982,6 +2982,30 @@ export default {
         this.delivery_charges_rate = 0;
       }
     },
+    broadcastToCustomerDisplay() {
+      if ('BroadcastChannel' in window) {
+        if (!this.customerDisplayChannel) {
+          const channelId = window.pos_channel_id || 'default';
+          this.customerDisplayChannel = new BroadcastChannel(channelId);
+          this.customerDisplayChannel.onmessage = (event) => {
+            if (event.data && event.data.action === 'REQUEST_INVOICE') {
+              this.broadcastToCustomerDisplay();
+            }
+          };
+        }
+        this.customerDisplayChannel.postMessage({
+          action: 'UPDATE_INVOICE',
+          invoice: {
+            items: this.items,
+            total_qty: this.total_qty,
+            subtotal: this.subtotal,
+            discount_amount: this.discount_amount,
+            grand_total: (this.subtotal - (this.discount_amount || 0))
+          },
+          pos_profile: this.pos_profile
+        });
+      }
+    }
   },
 
   mounted() {
@@ -3107,6 +3131,7 @@ export default {
         console.log("from items watch");
         
         this.handelOffers();
+        this.broadcastToCustomerDisplay();
         this.$forceUpdate();
       },
     },
@@ -3122,6 +3147,7 @@ export default {
       } else {
         this.additional_discount_percentage = 0;
       }
+      this.broadcastToCustomerDisplay();
     },
   },
 };

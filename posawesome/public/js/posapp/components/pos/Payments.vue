@@ -696,6 +696,32 @@
         </v-card>
       </v-dialog>
     </div>
+    <v-dialog v-model="otp_dialog" max-width="400px" persistent>
+      <v-card>
+        <v-card-title>
+          <span class="headline primary--text">{{ __("Verify OTP") }}</span>
+        </v-card-title>
+        <v-card-text>
+          <div class="mb-4">
+            {{ __("Please enter the OTP sent to the customer's mobile number.") }}
+          </div>
+          <v-text-field
+            v-model="otp_code"
+            :label="frappe._('OTP Code')"
+            outlined
+            dense
+            type="number"
+            autofocus
+          ></v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="error" text @click="close_otp_dialog">{{ __("Cancel") }}</v-btn>
+          <v-btn color="primary" @click="resend_otp" :loading="loyalty_otp_loading">{{ __("Resend OTP") }}</v-btn>
+          <v-btn color="success" @click="verify_otp" :loading="loyalty_otp_loading" :disabled="!otp_code">{{ __("Verify") }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -728,6 +754,10 @@ export default {
     pos_settings: "",
     customer_info: "",
     mpesa_modes: [],
+    otp_dialog: false,
+    otp_code: "",
+    is_loyalty_otp_verified: false,
+    loyalty_otp_loading: false,
   }),
 
   methods: {
@@ -1246,6 +1276,75 @@ export default {
       this.clear_all_amounts();
       this.customer_credit_dict.push(advance);
     },
+    check_loyalty_otp() {
+      this.otp_dialog = true;
+      this.otp_code = "";
+      this.send_loyalty_otp();
+    },
+    send_loyalty_otp() {
+      this.loyalty_otp_loading = true;
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.send_loyalty_otp",
+        args: {
+          customer: this.invoice_doc.customer,
+        },
+        callback: (r) => {
+          this.loyalty_otp_loading = false;
+          if (r.exc) {
+             evntBus.$emit("show_mesage", {
+              text: __("Failed to send OTP"),
+              color: "error",
+            });
+          } else {
+             evntBus.$emit("show_mesage", {
+              text: __("OTP Sent Successfully"),
+              color: "success",
+            });
+          }
+        },
+      });
+    },
+    verify_otp() {
+      this.loyalty_otp_loading = true;
+      frappe.call({
+        method: "posawesome.posawesome.api.posapp.validate_loyalty_otp",
+        args: {
+          customer: this.invoice_doc.customer,
+          otp: this.otp_code,
+        },
+        callback: (r) => {
+          this.loyalty_otp_loading = false;
+          if (r.message && r.message.status == "approved") {
+            this.is_loyalty_otp_verified = true;
+            this.otp_dialog = false;
+            const amount = this.loyalty_amount;
+            this.loyalty_amount = 0;
+            this.$nextTick(() => {
+                this.loyalty_amount = amount;
+            });
+            evntBus.$emit("show_mesage", {
+              text: __("OTP Verified"),
+              color: "success",
+            });
+          } else {
+            evntBus.$emit("show_mesage", {
+              text: __("Invalid OTP"),
+              color: "error",
+            });
+          }
+        },
+      });
+    },
+    resend_otp() {
+        this.send_loyalty_otp();
+    },
+    close_otp_dialog() {
+      this.otp_dialog = false;
+      this.loyalty_amount = 0;
+      this.invoice_doc.loyalty_amount = 0;
+      this.invoice_doc.redeem_loyalty_points = 0;
+      this.invoice_doc.loyalty_points = 0;
+    },
   },
 
   computed: {
@@ -1420,6 +1519,11 @@ export default {
 
   watch: {
     loyalty_amount(value) {
+      if (value > 0 && !this.is_loyalty_otp_verified) {
+        this.check_loyalty_otp();
+        return;
+      }
+      
       if (value > this.available_pioints_amount) {
         this.invoice_doc.loyalty_amount = 0;
         this.invoice_doc.redeem_loyalty_points = 0;
@@ -1430,7 +1534,7 @@ export default {
         });
       } else {
         this.invoice_doc.loyalty_amount = this.flt(this.loyalty_amount);
-        this.invoice_doc.redeem_loyalty_points = 1;
+        this.invoice_doc.redeem_loyalty_points = value > 0 ? 1 : 0;
         this.invoice_doc.loyalty_points =
           this.flt(this.loyalty_amount) / this.customer_info.conversion_factor;
       }
