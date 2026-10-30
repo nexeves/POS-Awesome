@@ -99,7 +99,7 @@ const controllers = (frm) => {
 
 	// Give Items table + its fetch button appear for the "Item Selection" apply type.
 	frm.toggle_display('give_items', frm.doc.apply_type === 'Item Selection');
-	frm.toggle_reqd('give_items', frm.doc.apply_type === 'Item Selection');
+	// frm.toggle_reqd('give_items', frm.doc.apply_type === 'Item Selection');
 	frm.toggle_display('fetch_selection_items', frm.doc.apply_type === 'Item Selection');
 
 	frm.toggle_display('product_discount_scheme_section', frm.doc.offer === 'Give Product');
