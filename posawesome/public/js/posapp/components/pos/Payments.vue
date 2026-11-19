@@ -85,22 +85,12 @@
           class="mx-1 my-2 py-2 text-caption"
         >
           <div>
-            {{
-              __("Paid online: {0}{1}", [
-                currencySymbol(invoice_doc.currency),
-                formtCurrency(online_prepaid_amount),
-              ])
-            }}
+            {{ __("Paid online: {0}", [money(online_prepaid_amount)]) }}
             <span v-if="online_card_label"> — {{ online_card_label }}</span>
           </div>
           <div class="font-weight-bold">
             <span v-if="collectable_total > 0">
-              {{
-                __("Still to collect: {0}{1}", [
-                  currencySymbol(invoice_doc.currency),
-                  formtCurrency(collectable_total),
-                ])
-              }}
+              {{ __("Still to collect: {0}", [money(collectable_total)]) }}
             </span>
             <span v-else>
               {{ __("Nothing to collect — hand the goods over") }}
@@ -109,11 +99,8 @@
           <div v-if="online_overpaid_amount > 0" class="error--text">
             {{
               __(
-                "Customer paid {0}{1} more than this invoice. Refund it through the app, not from the till.",
-                [
-                  currencySymbol(invoice_doc.currency),
-                  formtCurrency(online_overpaid_amount),
-                ]
+                "Customer paid {0} more than this invoice. Refund it through the app, not from the till.",
+                [money(online_overpaid_amount)]
               )
             }}
           </div>
@@ -143,7 +130,8 @@
                 :readonly="
                   invoice_doc.is_return ||
                   payments_readonly ||
-                  is_online_payment(payment)
+                  is_online_payment(payment) ||
+                  nothing_left_to_collect
                 "
               ></v-text-field>
             </v-col>
@@ -164,7 +152,11 @@
                 color="primary"
                 dark
                 @click="set_full_amount(payment.idx)"
-                :disabled="payments_readonly || is_online_payment(payment)"
+                :disabled="
+                  payments_readonly ||
+                  is_online_payment(payment) ||
+                  nothing_left_to_collect
+                "
                 >{{ payment.mode_of_payment }}</v-btn
               >
             </v-col>
@@ -1523,8 +1515,30 @@ export default {
       return onload.posa_online_masked_card || onload.posa_online_card_name || "";
     },
 
+    // currencySymbol returns null when System Settings hides the symbol, and
+    // interpolating that into a sentence prints the word "null".
+    money() {
+      const symbol = this.currencySymbol(
+        (this.invoice_doc && this.invoice_doc.currency) || null
+      );
+      return (amount) => {
+        const value = this.formtCurrency(amount);
+        return symbol ? symbol + " " + value : value;
+      };
+    },
+
     is_online_prepaid() {
       return this.online_prepaid_amount > 0;
+    },
+
+    // The card already covered the whole bill, so every payment field here is
+    // locked. The quick-fill buttons were already harmless — they fill with
+    // collectable_total, which is 0 in this state — but the amount boxes could
+    // still be typed into, and one stray keystroke would have the cashier
+    // collecting the money a second time and handing back change to balance
+    // it. The server refuses it either way; this stops it being entered.
+    nothing_left_to_collect() {
+      return this.is_online_prepaid && this.collectable_total <= 0;
     },
 
     // What is left for the cashier to take. The same number for an ordinary

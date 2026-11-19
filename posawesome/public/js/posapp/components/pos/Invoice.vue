@@ -64,12 +64,7 @@
       >
         <v-col cols="12" class="py-0">
           <v-alert dense text type="success" class="mb-0 py-1 text-caption">
-            {{
-              __("Already paid online: {0}{1}", [
-                currencySymbol(pos_profile.currency),
-                formtCurrency(online_prepaid_amount),
-              ])
-            }}
+            {{ __("Already paid online: {0}", [money(online_prepaid_amount)]) }}
             <span v-if="online_card_label"> — {{ online_card_label }}</span>
           </v-alert>
         </v-col>
@@ -988,6 +983,22 @@ export default {
       return flt(onload.posa_online_prepaid_amount || doc.online_paid_amount);
     },
 
+    // An amount with its symbol, safe to drop into a sentence.
+    //
+    // currencySymbol returns null outright when System Settings has "Hide
+    // Currency Symbol" switched on — and interpolating that into a string
+    // prints the word "null", which is what the cart banner was showing.
+    // Everywhere else in the POS the symbol goes through a `prefix` prop,
+    // where null simply renders nothing; this does the same for the places
+    // that build a sentence instead.
+    money() {
+      const symbol = this.currencySymbol(this.pos_profile.currency);
+      return (amount) => {
+        const value = this.formtCurrency(amount);
+        return symbol ? symbol + " " + value : value;
+      };
+    },
+
     online_card_label() {
       const doc = this.invoice_doc || {};
       const onload = doc.__onload || {};
@@ -1410,6 +1421,22 @@ export default {
           this.new_invoice();
           held = true;
         }
+      }
+
+      // The customer picker only ever lists customers in the POS category —
+      // get_customer_names filters on it — and an app customer is category
+      // Ecommerce, so the order's customer is not in that list. The field
+      // therefore held the right value and rendered blank, because a Vuetify
+      // autocomplete shows nothing for a value with no matching item. Hand it
+      // the one customer it is missing.
+      if (order.customer) {
+        evntBus.$emit("add_customer_to_list", {
+          name: order.customer,
+          customer_name: order.customer_name || order.customer,
+          mobile_no: order.contact_mobile || order.contact_phone || "",
+          email_id: order.contact_email || "",
+          primary_address: order.address_display || "",
+        });
       }
 
       this.new_order(order);

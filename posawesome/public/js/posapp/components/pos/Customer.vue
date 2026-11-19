@@ -145,7 +145,12 @@ export default {
         this.customer = customer;
       });
       evntBus.$on('add_customer_to_list', (customer) => {
-        this.customers.push(customer);
+        // Replace rather than append: loading the same online order twice
+        // would otherwise put that customer in the picker twice over.
+        if (!customer || !customer.name) return;
+        const at = this.customers.findIndex((c) => c.name === customer.name);
+        if (at === -1) this.customers.push(customer);
+        else this.customers.splice(at, 1, customer);
       });
       evntBus.$on('set_customer_readonly', (value) => {
         this.readonly = value;
